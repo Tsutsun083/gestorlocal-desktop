@@ -1,0 +1,32 @@
+# Dependencias - ¡Esto es lo más importante!
+node_modules/
+package-lock.json
+yarn.lock
+
+# Base de datos (no subir archivos .db)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Archivos de compilación
+dist/
+out/
+build/
+release/
+
+# Archivos de configuración personal
+.env
+.vscode/
+.idea/
+*.log
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Archivos temporales
+*.tmp
+*.temp
+*.cache

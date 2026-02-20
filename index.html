@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GestorLocal Desktop</title>
+    <link rel="stylesheet" href="src/css/main.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Barra de título personalizada -->
+    <div class="title-bar">
+        <div class="window-controls">
+            <button class="min-btn" onclick="window.electronAPI.minimizeWindow()">
+                <i class="fas fa-minus"></i>
+            </button>
+            <button class="max-btn" onclick="window.electronAPI.maximizeWindow()">
+                <i class="fas fa-square"></i>
+            </button>
+            <button class="close-btn" onclick="window.electronAPI.closeWindow()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="title">
+            <i class="fas fa-store"></i> GestorLocal Desktop
+        </div>
+        <div class="app-info">
+            <span id="app-version">v1.0.0</span>
+        </div>
+    </div>
+
+    <!-- Layout principal -->
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="logo">
+                <i class="fas fa-bread-slice"></i>
+                <span>GestorLocal</span>
+            </div>
+            
+            <ul class="nav-menu">
+                <li class="nav-item active" data-page="dashboard">
+                    <i class="fas fa-home"></i>
+                    <span>Inicio</span>
+                </li>
+                <li class="nav-item" data-page="productos">
+                    <i class="fas fa-box-open"></i>
+                    <span>Productos</span>
+                </li>
+                <li class="nav-item" data-page="ventas">
+                    <i class="fas fa-cash-register"></i>
+                    <span>Ventas</span>
+                </li>
+                <li class="nav-item" data-page="reportes">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Reportes</span>
+                </li>
+                <li class="nav-item" data-page="config">
+                    <i class="fas fa-cog"></i>
+                    <span>Configuración</span>
+                </li>
+            </ul>
+            
+            <div class="user-info">
+                <div class="user-avatar">
+                    <i class="fas fa-user-circle"></i>
+                </div>
+                <div class="user-details">
+                    <strong>Dueño</strong>
+                    <small>Panadería La Buena</small>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Contenido principal -->
+        <main class="main-content">
+            <div class="content-header">
+                <h1 id="page-title">Dashboard</h1>
+                <div class="header-actions">
+                    <button class="btn btn-primary" id="btn-nueva-venta">
+                        <i class="fas fa-plus"></i> Nueva Venta
+                    </button>
+                    <button class="btn btn-secondary" id="btn-actualizar">
+                        <i class="fas fa-sync-alt"></i> Actualizar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Aquí se cargará el contenido dinámico -->
+            <div id="page-content"></div>
+        </main>
+    </div>
+
+    <script src="src/js/renderer.js"></script>
+</body>
+</html>

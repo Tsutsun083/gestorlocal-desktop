@@ -197,77 +197,66 @@ ipcMain.handle('get-productos', async () => {
   });
 });
 
-// Añadir producto
-ipcMain.handle('add-producto', async (event, producto) => {
-  return new Promise((resolve, reject) => {
-    const { 
-      nombre, 
-      precio_base_usd, 
-      margen_sugerido, 
-      categoria_id, 
-      stock_minimo,
-      usar_calculo_automatico,
-      precio_manual_bs 
-    } = producto;
-    
-    const sql = `INSERT INTO productos (
-      nombre, precio_base_usd, margen_sugerido, categoria_id, 
-      stock_minimo, usar_calculo_automatico, precio_manual_bs, activo
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)`;
-    
-    db.run(sql, 
-      [nombre, precio_base_usd, margen_sugerido, categoria_id, stock_minimo, 
-       usar_calculo_automatico ? 1 : 0, precio_manual_bs], 
-      function(err) {
-        if (err) {
-          console.error('Error insertando:', err);
-          reject(err);
-        } else {
-          console.log('✅ Producto insertado ID:', this.lastID);
-          resolve({ id: this.lastID, success: true });
-        }
-      }
-    );
-  });
-});
-
-// Actualizar producto
+// Actualizar producto - VERSIÓN CORREGIDA
 ipcMain.handle('update-producto', async (event, id, producto) => {
-  return new Promise((resolve, reject) => {
-    const { 
-      nombre, 
-      precio_base_usd, 
-      margen_sugerido, 
-      categoria_id, 
-      stock_minimo,
-      usar_calculo_automatico,
-      precio_manual_bs 
-    } = producto;
-    
-    const sql = `UPDATE productos SET 
-      nombre = ?, 
-      precio_base_usd = ?, 
-      margen_sugerido = ?, 
-      categoria_id = ?, 
-      stock_minimo = ?,
-      usar_calculo_automatico = ?,
-      precio_manual_bs = ?
-      WHERE id = ?`;
-    
-    db.run(sql, 
-      [nombre, precio_base_usd, margen_sugerido, categoria_id, stock_minimo, 
-       usar_calculo_automatico ? 1 : 0, precio_manual_bs, id], 
-      function(err) {
-        if (err) {
-          console.error('Error actualizando:', err);
-          reject(err);
-        } else {
-          console.log('✅ Producto actualizado ID:', id);
-          resolve({ success: true, changes: this.changes });
-        }
-      }
-    );
-  });
+    return new Promise((resolve, reject) => {
+        const { 
+            nombre, 
+            precio_base_usd, 
+            margen_sugerido, 
+            categoria_id, 
+            stock_minimo,
+            stock_actual,
+            usar_calculo_automatico,
+            precio_manual_bs 
+        } = producto;
+        
+        // 🔥 IMPORTANTE: Verificar que los valores no sean undefined
+        console.log('🔄 Actualizando producto:', { 
+            id, nombre, stock_actual, precio_base_usd, margen_sugerido 
+        });
+        
+        // Asegurar valores por defecto
+        const sql = `UPDATE productos SET 
+            nombre = COALESCE(?, nombre),
+            precio_base_usd = COALESCE(?, precio_base_usd),
+            margen_sugerido = COALESCE(?, margen_sugerido),
+            categoria_id = COALESCE(?, categoria_id),
+            stock_minimo = COALESCE(?, stock_minimo),
+            stock_actual = COALESCE(?, stock_actual),
+            usar_calculo_automatico = COALESCE(?, usar_calculo_automatico),
+            precio_manual_bs = COALESCE(?, precio_manual_bs)
+            WHERE id = ?`;
+        
+        db.run(sql, 
+            [
+                nombre || null,
+                precio_base_usd || null,
+                margen_sugerido || null,
+                categoria_id || null,
+                stock_minimo !== undefined ? stock_minimo : null,
+                stock_actual !== undefined ? stock_actual : null,
+                usar_calculo_automatico !== undefined ? usar_calculo_automatico : null,
+                precio_manual_bs || null,
+                id
+            ], 
+            function(err) {
+                if (err) {
+                    console.error('❌ Error SQL en update-producto:', err);
+                    console.error('📝 SQL ejecutado:', sql);
+                    console.error('📊 Parámetros:', [
+                        nombre, precio_base_usd, margen_sugerido, categoria_id,
+                        stock_minimo, stock_actual, usar_calculo_automatico, 
+                        precio_manual_bs, id
+                    ]);
+                    reject(err);
+                } else {
+                    console.log('✅ Producto actualizado ID:', id, 'Stock:', stock_actual);
+                    resolve({ success: true, changes: this.changes });
+                }
+            }
+        );
+    });
 });
 
 // Eliminar producto (borrado lógico)

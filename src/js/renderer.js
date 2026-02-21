@@ -49,10 +49,57 @@ async function cargarDatosIniciales() {
             productos: productos.length
         });
         
-        // Si no hay productos, insertar datos de demostración
+        // Si no hay productos, insertar demo
         if (productos.length === 0) {
+            console.log('📦 No hay productos, insertando demo...');
             await insertarProductosDemo();
             productos = await window.electronAPI.getProductos() || [];
+        } else {
+            // Verificar productos con stock 0
+            const productosSinStock = productos.filter(p => (p.stock_actual || 0) === 0);
+            if (productosSinStock.length > 0) {
+                console.log(`⚠️ ${productosSinStock.length} productos con stock 0. Forzando actualización...`);
+                
+                for (const prod of productosSinStock) {
+                    // Determinar stock según el nombre del producto
+                    let stockNuevo = 10; // valor por defecto
+                    const nombreLower = prod.nombre.toLowerCase();
+                    
+                    if (nombreLower.includes('pan')) stockNuevo = 10;
+                    else if (nombreLower.includes('café') || nombreLower.includes('cafe')) stockNuevo = 15;
+                    else if (nombreLower.includes('leche')) stockNuevo = 8;
+                    else if (nombreLower.includes('queso')) stockNuevo = 6;
+                    else if (nombreLower.includes('huevo')) stockNuevo = 12;
+                    
+                    console.log(`🔄 Actualizando ${prod.nombre} con stock ${stockNuevo}`);
+                    
+                    // 🔥 CORRECCIÓN: Crear objeto SOLO con los campos necesarios
+                    const productoActualizado = {
+                        nombre: prod.nombre,
+                        categoria_id: prod.categoria_id,
+                        stock_minimo: prod.stock_minimo || 5,
+                        stock_actual: stockNuevo,
+                        usar_calculo_automatico: prod.usar_calculo_automatico || 1,
+                        precio_base_usd: prod.precio_base_usd,
+                        margen_sugerido: prod.margen_sugerido,
+                        precio_manual_bs: prod.precio_manual_bs
+                    };
+                    
+                    try {
+                        await window.electronAPI.updateProducto(prod.id, productoActualizado);
+                        console.log(`✅ ${prod.nombre} actualizado`);
+                    } catch (error) {
+                        console.error(`❌ Error actualizando ${prod.nombre}:`, error);
+                    }
+                }
+                
+                // Recargar productos después de actualizar
+                productos = await window.electronAPI.getProductos() || [];
+                console.log('✅ Productos recargados:', productos.map(p => ({ 
+                    nombre: p.nombre, 
+                    stock: p.stock_actual 
+                })));
+            }
         }
         
         loadDashboard();
@@ -61,7 +108,6 @@ async function cargarDatosIniciales() {
         cargarDatosDemo();
     }
 }
-
 // Insertar productos de demostración con stock
 async function insertarProductosDemo() {
     const productosDemo = [

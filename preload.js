@@ -16,5 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // CRUD Productos
     addProducto: (producto) => ipcRenderer.invoke('add-producto', producto),
     updateProducto: (id, producto) => ipcRenderer.invoke('update-producto', id, producto),
-    deleteProducto: (id) => ipcRenderer.invoke('delete-producto', id)
+    deleteProducto: (id) => ipcRenderer.invoke('delete-producto', id),
+    registrarVenta: (ventaData) => ipcRenderer.invoke('registrar-venta', ventaData),
+    getVentasDia: () => ipcRenderer.invoke('get-ventas-dia')
 });

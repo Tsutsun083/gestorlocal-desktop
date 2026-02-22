@@ -269,3 +269,127 @@ body {
     font-weight: 700;
     margin-bottom: 4px;
 }
+
+/* Estilos para ventas */
+.buscador-grande {
+    font-size: 18px !important;
+    padding: 15px !important;
+    border: 2px solid #e2e8f0 !important;
+    border-radius: 12px !important;
+}
+
+.resultados-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+    max-height: 500px;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.producto-venta-card {
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 15px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+}
+
+.producto-venta-card:hover {
+    transform: translateY(-4px);
+    border-color: #2563eb;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+
+.producto-nombre {
+    font-weight: 600;
+    font-size: 16px;
+    margin-bottom: 8px;
+    color: #1e293b;
+}
+
+.producto-precio {
+    font-size: 20px;
+    font-weight: bold;
+    color: #2563eb;
+    margin: 10px 0;
+}
+
+.producto-stock {
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 20px;
+    display: inline-block;
+}
+
+.carrito-vacio {
+    text-align: center;
+    color: #94a3b8;
+    padding: 40px 20px;
+    font-style: italic;
+}
+
+.carrito-item {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.carrito-item:last-child {
+    border-bottom: none;
+}
+
+.btn-cantidad {
+    background: #f1f5f9;
+    border: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 16px;
+}
+
+.btn-cantidad:hover {
+    background: #e2e8f0;
+}
+
+.carrito-item-subtotal {
+    font-weight: 600;
+    color: #2563eb;
+    min-width: 80px;
+    text-align: right;
+}
+
+.btn-eliminar {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 5px;
+    border-radius: 4px;
+}
+
+.btn-eliminar:hover {
+    background: #fee2e2;
+}
+
+.loading-message {
+    text-align: center;
+    color: #94a3b8;
+    padding: 40px;
+    grid-column: 1 / -1;
+}
+
+.error-message {
+    text-align: center;
+    color: #dc2626;
+    padding: 40px;
+    grid-column: 1 / -1;
+}

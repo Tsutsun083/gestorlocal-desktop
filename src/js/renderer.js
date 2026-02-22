@@ -102,7 +102,7 @@ async function cargarDatosIniciales() {
             }
         }
         
-        loadDashboard();
+        await loadDashboard();
     } catch (error) {
         console.error('Error cargando datos:', error);
         cargarDatosDemo();
@@ -185,6 +185,7 @@ function setupNavigation() {
             
             if (page === 'dashboard') loadDashboard();
             else if (page === 'productos') loadProductos();
+            else if (page === 'ventas') loadVentas();
             else loadPlaceholder(page, titles[page]);
         });
     });
@@ -263,9 +264,28 @@ function mostrarModalTasa() {
 }
 
 // DASHBOARD
-function loadDashboard() {
+async function loadDashboard() {
     const content = document.getElementById('page-content');
     if (!content) return;
+
+    // Obtener ventas del día
+    let ventasDia = { cantidad: 0, total: 0 };
+    try {
+        if (window.electronAPI?.getVentasDia) {
+            console.log('📞 Llamando a getVentasDia...');
+            ventasDia = await window.electronAPI.getVentasDia();
+            console.log('📊 Ventas del día recibidas:', ventasDia);
+            
+            ventasDia = {
+                cantidad: Number(ventasDia?.cantidad) || 0,
+                total: Number(ventasDia?.total) || 0
+            };
+        } else {
+            console.error('❌ electronAPI.getVentasDia no está disponible');
+        }
+    } catch (error) {
+        console.error('❌ Error obteniendo ventas:', error);
+    }
     
     const totalProductos = productos.length;
     const stockBajo = productos.filter(p => (p.stock_actual || 0) <= (p.stock_minimo || 5)).length;
@@ -277,8 +297,8 @@ function loadDashboard() {
                 <div class="card-icon"><i class="fas fa-dollar-sign"></i></div>
                 <div class="card-content">
                     <h3>Ventas Hoy</h3>
-                    <p class="card-value">0 Bs</p>
-                    <small>${configuracion.nombre_negocio}</small>
+                    <p class="card-value">${ventasDia.total.toLocaleString()} Bs</p>
+                    <small>${ventasDia.cantidad} transacciones - ${configuracion.nombre_negocio}</small>
                 </div>
             </div>
             <div class="card card-success">
@@ -305,6 +325,12 @@ function loadDashboard() {
                     <small>Unidades en inventario</small>
                 </div>
             </div>
+        </div>
+        
+        <div style="text-align: right; margin: 10px 0;">
+            <button class="btn btn-secondary btn-sm" id="btn-refresh-dashboard">
+                <i class="fas fa-sync-alt"></i> Actualizar Datos
+            </button>
         </div>
         
         <div class="quick-actions">
@@ -346,7 +372,11 @@ function loadDashboard() {
         setTimeout(() => mostrarFormularioProducto(), 100);
     });
     document.getElementById('btn-quick-tasa')?.addEventListener('click', () => mostrarModalTasa());
-}
+    document.getElementById('btn-refresh-dashboard')?.addEventListener('click', async () => {
+        console.log('🔄 Actualizando dashboard manualmente');
+        await loadDashboard();
+    });
+} // ← ESTA LLAVE CIERRA LA FUNCIÓN loadDashboard
 
 // PÁGINA DE PRODUCTOS
 function loadProductos() {
@@ -437,6 +467,322 @@ function loadProductos() {
                 }
             }
         });
+    });
+}
+
+// PÁGINA DE VENTAS
+function loadVentas() {
+    const content = document.getElementById('page-content');
+    if (!content) return;
+    
+    content.innerHTML = `
+        <div class="ventas-container">
+            <div class="ventas-grid">
+                <!-- Panel izquierdo: Búsqueda y productos -->
+                <div class="panel-productos">
+                    <h3>🔍 Buscar Productos</h3>
+                    <input type="text" id="buscador-ventas" class="form-control buscador-grande" 
+                           placeholder="Escribe nombre del producto..." autofocus>
+                    
+                    <div id="resultados-busqueda" class="resultados-grid">
+                        <!-- Los productos aparecerán aquí -->
+                        <div class="loading-message">Escribe para buscar productos...</div>
+                    </div>
+                </div>
+                
+                <!-- Panel derecho: Carrito de compras -->
+                <div class="panel-carrito">
+                    <h3>🛒 Venta Actual</h3>
+                    <div id="carrito-items" class="carrito-items">
+                        <div class="carrito-vacio">El carrito está vacío</div>
+                    </div>
+                    
+                    <div class="carrito-total">
+                        <span>TOTAL:</span>
+                        <span id="total-venta" class="total-valor">0,00 Bs</span>
+                    </div>
+                    
+                    <div class="metodos-pago">
+                        <h4>Método de Pago</h4>
+                        <select id="metodo-pago" class="form-control">
+                            <option value="efectivo">Efectivo</option>
+                            <option value="transferencia">Transferencia</option>
+                            <option value="mixto">Mixto</option>
+                        </select>
+                    </div>
+                    
+                    <div class="acciones-venta">
+                        <button class="btn btn-secondary" id="cancelar-venta">Cancelar</button>
+                        <button class="btn btn-success" id="finalizar-venta">Finalizar Venta</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Inicializar el buscador
+    setupBuscadorVentas();
+
+    // Configurar botón de finalizar venta
+    setupFinalizarVenta();
+
+    // Configurar botón de cancelar
+    document.getElementById('cancelar-venta').addEventListener('click', () => {
+        if (carritoVentas.length > 0) {
+            if (confirm('¿Cancelar la venta actual?')) {
+                carritoVentas = [];
+                actualizarCarritoUI();
+            }
+        }
+    });
+}
+
+// Configurar buscador de productos para ventas
+function setupBuscadorVentas() {
+    const buscador = document.getElementById('buscador-ventas');
+    if (!buscador) return;
+    
+    let timeoutId;
+    
+    buscador.addEventListener('input', (e) => {
+        const termino = e.target.value.trim();
+        
+        // Limpiar timeout anterior (para no buscar en cada letra)
+        clearTimeout(timeoutId);
+        
+        if (termino.length < 2) {
+            document.getElementById('resultados-busqueda').innerHTML = 
+                '<div class="loading-message">Escribe al menos 2 caracteres...</div>';
+            return;
+        }
+        
+        // Esperar 300ms después de dejar de escribir
+        timeoutId = setTimeout(() => {
+            buscarProductosVenta(termino);
+        }, 300);
+    });
+}
+
+// Buscar productos en la base de datos
+async function buscarProductosVenta(termino) {
+    const resultadosDiv = document.getElementById('resultados-busqueda');
+    resultadosDiv.innerHTML = '<div class="loading-message">Buscando...</div>';
+    
+    try {
+        // Obtener todos los productos (ya los tenemos en memoria)
+        // Filtrar localmente para mayor velocidad
+        const resultados = productos.filter(p => 
+            p.nombre.toLowerCase().includes(termino.toLowerCase()) &&
+            p.activo !== 0
+        );
+        
+        if (resultados.length === 0) {
+            resultadosDiv.innerHTML = '<div class="loading-message">No se encontraron productos</div>';
+            return;
+        }
+        
+        // Mostrar resultados
+        resultadosDiv.innerHTML = resultados.map(p => {
+            const precioBs = calcularPrecioBs(p);
+            const stockActual = p.stock_actual || 0;
+            const stockClass = stockActual <= (p.stock_minimo || 5) ? 'stock-bajo' : 'stock-normal';
+            
+            return `
+                <div class="producto-venta-card" data-id="${p.id}" 
+                     onclick="agregarAlCarrito(${p.id})">
+                    <div class="producto-nombre">${p.nombre}</div>
+                    <div class="producto-precio">${precioBs.toLocaleString()} Bs</div>
+                    <div class="producto-stock ${stockClass}">
+                        Stock: ${stockActual}
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+    } catch (error) {
+        console.error('Error buscando productos:', error);
+        resultadosDiv.innerHTML = '<div class="error-message">Error al buscar productos</div>';
+    }
+}
+
+// Variable global para el carrito
+let carritoVentas = [];
+
+// Agregar producto al carrito
+window.agregarAlCarrito = async function(productoId) {
+    const producto = productos.find(p => p.id == productoId);
+    if (!producto) return;
+    
+    const stockActual = producto.stock_actual || 0;
+    if (stockActual <= 0) {
+        alert('❌ Producto sin stock disponible');
+        return;
+    }
+    
+    // Buscar si ya está en el carrito
+    const itemExistente = carritoVentas.find(item => item.id === productoId);
+    
+    if (itemExistente) {
+        // Verificar stock
+        if (itemExistente.cantidad >= stockActual) {
+            alert('❌ No hay suficiente stock');
+            return;
+        }
+        itemExistente.cantidad++;
+    } else {
+        carritoVentas.push({
+            id: producto.id,
+            nombre: producto.nombre,
+            precio: calcularPrecioBs(producto),
+            cantidad: 1,
+            stock: stockActual
+        });
+    }
+    
+    actualizarCarritoUI();
+};
+
+// Actualizar la interfaz del carrito
+function actualizarCarritoUI() {
+    const carritoDiv = document.getElementById('carrito-items');
+    const totalSpan = document.getElementById('total-venta');
+    
+    if (carritoVentas.length === 0) {
+        carritoDiv.innerHTML = '<div class="carrito-vacio">El carrito está vacío</div>';
+        totalSpan.textContent = '0,00 Bs';
+        return;
+    }
+    
+    let total = 0;
+    carritoDiv.innerHTML = carritoVentas.map(item => {
+        const subtotal = item.precio * item.cantidad;
+        total += subtotal;
+        
+        return `
+            <div class="carrito-item">
+                <div class="carrito-item-info">
+                    <div class="carrito-item-nombre">${item.nombre}</div>
+                    <div class="carrito-item-precio">${item.precio.toLocaleString()} Bs c/u</div>
+                </div>
+                <div class="carrito-item-cantidad">
+                    <button class="btn-cantidad" onclick="cambiarCantidad(${item.id}, -1)">-</button>
+                    <span>${item.cantidad}</span>
+                    <button class="btn-cantidad" onclick="cambiarCantidad(${item.id}, 1)">+</button>
+                </div>
+                <div class="carrito-item-subtotal">
+                    ${subtotal.toLocaleString()} Bs
+                </div>
+                <button class="btn-eliminar" onclick="eliminarDelCarrito(${item.id})">🗑️</button>
+            </div>
+        `;
+    }).join('');
+    
+    totalSpan.textContent = total.toLocaleString() + ' Bs';
+}
+
+// Cambiar cantidad en el carrito
+window.cambiarCantidad = function(productoId, delta) {
+    const item = carritoVentas.find(i => i.id === productoId);
+    if (!item) return;
+    
+    const nuevaCantidad = item.cantidad + delta;
+    
+    if (nuevaCantidad < 1) {
+        eliminarDelCarrito(productoId);
+        return;
+    }
+    
+    if (nuevaCantidad > item.stock) {
+        alert('❌ No hay suficiente stock');
+        return;
+    }
+    
+    item.cantidad = nuevaCantidad;
+    actualizarCarritoUI();
+};
+
+// Eliminar del carrito
+window.eliminarDelCarrito = function(productoId) {
+    carritoVentas = carritoVentas.filter(i => i.id !== productoId);
+    actualizarCarritoUI();
+};
+
+// Configurar botón de finalizar venta
+function setupFinalizarVenta() {
+    const btnFinalizar = document.getElementById('finalizar-venta');
+    if (!btnFinalizar) return;
+    
+    btnFinalizar.addEventListener('click', async () => {
+        if (carritoVentas.length === 0) {
+            alert('❌ El carrito está vacío');
+            return;
+        }
+        
+        const metodoPago = document.getElementById('metodo-pago').value;
+        const total = carritoVentas.reduce((sum, item) => 
+            sum + (item.precio * item.cantidad), 0
+        );
+        
+        // Mostrar resumen de la venta
+        const resumen = carritoVentas.map(item => 
+            `${item.nombre} x${item.cantidad} = ${(item.precio * item.cantidad).toLocaleString()} Bs`
+        ).join('\n');
+        
+        if (!confirm(`¿Registrar venta?\n\n${resumen}\n\nTOTAL: ${total.toLocaleString()} Bs\nMétodo: ${metodoPago}`)) {
+            return;
+        }
+        
+        try {
+            // Verificar stock nuevamente
+            for (const item of carritoVentas) {
+                const producto = productos.find(p => p.id === item.id);
+                if (!producto || (producto.stock_actual || 0) < item.cantidad) {
+                    alert(`❌ Stock insuficiente para ${item.nombre}`);
+                    return;
+                }
+            }
+            
+            const resultado = await window.electronAPI.registrarVenta({
+                items: carritoVentas.map(item => ({
+                    id: item.id,
+                    cantidad: item.cantidad,
+                    precio: item.precio
+                })),
+                total: total,
+                metodoPago: metodoPago
+            });
+            
+            if (resultado.success) {
+                alert('✅ Venta registrada exitosamente');
+                
+                // Limpiar carrito
+                carritoVentas = [];
+                actualizarCarritoUI();
+                
+                // Recargar productos (para actualizar stock)
+                productos = await window.electronAPI.getProductos() || [];
+                
+                // Limpiar búsqueda
+                document.getElementById('buscador-ventas').value = '';
+                document.getElementById('resultados-busqueda').innerHTML = 
+                    '<div class="loading-message">Escribe para buscar productos...</div>';
+                
+                // 🔥 ACTUALIZAR DASHBOARD SI ESTAMOS EN ÉL
+    const activePage = document.querySelector('.nav-item.active')?.getAttribute('data-page');
+    if (activePage === 'dashboard') {
+        await loadDashboard();
+        console.log('📊 Dashboard actualizado con nuevas ventas');
+    } 
+    // Limpiar búsqueda
+    document.getElementById('buscador-ventas').value = '';
+    document.getElementById('resultados-busqueda').innerHTML = 
+        '<div class="loading-message">Escribe para buscar productos...</div>';
+                }
+            }
+        catch (error) {
+            console.error('Error registrando venta:', error);
+            alert('❌ Error al registrar la venta. Revisa la consola para más detalles.');
+        }
     });
 }
 

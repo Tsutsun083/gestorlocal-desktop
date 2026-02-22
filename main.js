@@ -58,6 +58,31 @@ function crearTablas() {
           FOREIGN KEY (categoria_id) REFERENCES categorias(id)
         )
       `);
+        // Tabla de ventas
+db.run(`
+    CREATE TABLE IF NOT EXISTS ventas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+        total REAL,
+        metodo_pago TEXT,
+        subtotal REAL,
+        descuento REAL DEFAULT 0
+    )
+`);
+
+// Tabla de detalles de venta
+db.run(`
+    CREATE TABLE IF NOT EXISTS venta_detalles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        venta_id INTEGER,
+        producto_id INTEGER,
+        cantidad INTEGER,
+        precio_unitario REAL,
+        subtotal REAL,
+        FOREIGN KEY (venta_id) REFERENCES ventas(id),
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+    )
+`);
 
       // Tabla de configuración
       db.run(`
@@ -69,6 +94,7 @@ function crearTablas() {
           redondear_precios INTEGER DEFAULT 1,
           actualizado_en DATETIME DEFAULT CURRENT_TIMESTAMP
         )
+          
       `, function(err) {
         if (!err) {
           // Insertar configuración inicial si no existe
@@ -272,6 +298,125 @@ ipcMain.handle('delete-producto', async (event, id) => {
       }
     });
   });
+});
+
+// Registrar nueva venta - VERSIÓN CORREGIDA CON FECHA LOCAL
+ipcMain.handle('registrar-venta', async (event, ventaData) => {
+    return new Promise((resolve, reject) => {
+        const { items, total, metodoPago } = ventaData;
+        
+        console.log('🔄 Registrando venta:', { items, total, metodoPago });
+        
+        // Iniciar transacción
+        db.serialize(() => {
+            db.run('BEGIN TRANSACTION');
+            
+            // 🔥 IMPORTANTE: Guardar la fecha explícitamente con zona horaria local
+            db.run(
+                `INSERT INTO ventas (fecha, total, metodo_pago, subtotal) 
+                 VALUES (datetime('now', 'localtime'), ?, ?, ?)`,
+                [total, metodoPago, total],
+                function(err) {
+                    if (err) {
+                        console.error('❌ Error insertando venta:', err);
+                        db.run('ROLLBACK');
+                        reject(err);
+                        return;
+                    }
+                    
+                    const ventaId = this.lastID;
+                    console.log('✅ Venta principal creada ID:', ventaId, 'Fecha:', new Date().toLocaleString());
+                    
+                    let detallesPendientes = items.length;
+                    let errorEnDetalles = false;
+                    
+                    if (detallesPendientes === 0) {
+                        db.run('ROLLBACK');
+                        reject(new Error('No hay items en la venta'));
+                        return;
+                    }
+                    
+                    items.forEach(item => {
+                        db.run(
+                            `INSERT INTO venta_detalles (venta_id, producto_id, cantidad, precio_unitario, subtotal) 
+                             VALUES (?, ?, ?, ?, ?)`,
+                            [ventaId, item.id, item.cantidad, item.precio, item.precio * item.cantidad],
+                            function(err) {
+                                if (err) {
+                                    console.error('❌ Error insertando detalle:', err);
+                                    errorEnDetalles = true;
+                                }
+                                
+                                db.run(
+                                    `UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ? AND stock_actual >= ?`,
+                                    [item.cantidad, item.id, item.cantidad],
+                                    function(err) {
+                                        if (err) {
+                                            console.error('❌ Error actualizando stock:', err);
+                                            errorEnDetalles = true;
+                                        } else {
+                                            console.log(`✅ Stock actualizado producto ${item.id}: -${item.cantidad}`);
+                                        }
+                                        
+                                        detallesPendientes--;
+                                        
+                                        if (detallesPendientes === 0) {
+                                            if (errorEnDetalles) {
+                                                console.error('❌ Errores en detalles, haciendo ROLLBACK');
+                                                db.run('ROLLBACK');
+                                                reject(new Error('Error en detalles de venta'));
+                                            } else {
+                                                db.run('COMMIT');
+                                                console.log('✅ Venta completada ID:', ventaId);
+                                                resolve({ success: true, ventaId });
+                                            }
+                                        }
+                                    }
+                                );
+                            }
+                        );
+                    });
+                }
+            );
+        });
+    });
+});
+
+// Obtener ventas del día - VERSIÓN CORREGIDA
+ipcMain.handle('get-ventas-dia', async () => {
+    console.log('📊 Solicitando ventas del día');
+    
+    return new Promise((resolve, reject) => {
+        // Usar rango de fechas para mayor precisión
+        const query = `
+            SELECT 
+                COUNT(*) as cantidad,
+                COALESCE(SUM(total), 0) as total
+            FROM ventas 
+            WHERE fecha >= datetime('now', 'start of day') 
+              AND fecha < datetime('now', 'start of day', '+1 day')
+        `;
+        
+        console.log('🔍 Ejecutando query:', query);
+        
+        db.get(query, [], (err, row) => {
+            if (err) {
+                console.error('❌ Error obteniendo ventas del día:', err);
+                reject(err);
+            } else {
+                console.log('✅ Resultado de ventas hoy:', row);
+                console.log('📊 Ventas hoy - Cantidad:', row?.cantidad, 'Total:', row?.total);
+                
+                const resultado = {
+                    cantidad: row?.cantidad || 0,
+                    total: row?.total || 0
+                };
+                
+                console.log('📤 Enviando al frontend:', resultado);
+                resolve(resultado);
+            }
+        });
+    });
 });
 
 // ============================================

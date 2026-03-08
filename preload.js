@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     updateTasaBCV: (tasa) => ipcRenderer.invoke('update-tasa-bcv', tasa),
     getCategorias: () => ipcRenderer.invoke('get-categorias'),
     getProductos: () => ipcRenderer.invoke('get-productos'),
+    realizarBackup: () => ipcRenderer.invoke('realizar-backup'),
+    buscarProductosFTS: (termino) => ipcRenderer.invoke('buscar-productos-fts', termino),
     
     // CRUD Productos
     addProducto: (producto) => ipcRenderer.invoke('add-producto', producto),

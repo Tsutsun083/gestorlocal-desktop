@@ -61,8 +61,7 @@ async function cargarDatosIniciales() {
                 console.log(`⚠️ ${productosSinStock.length} productos con stock 0. Forzando actualización...`);
                 
                 for (const prod of productosSinStock) {
-                    // Determinar stock según el nombre del producto
-                    let stockNuevo = 10; // valor por defecto
+                    let stockNuevo = 10;
                     const nombreLower = prod.nombre.toLowerCase();
                     
                     if (nombreLower.includes('pan')) stockNuevo = 10;
@@ -73,7 +72,6 @@ async function cargarDatosIniciales() {
                     
                     console.log(`🔄 Actualizando ${prod.nombre} con stock ${stockNuevo}`);
                     
-                    // 🔥 CORRECCIÓN: Crear objeto SOLO con los campos necesarios
                     const productoActualizado = {
                         nombre: prod.nombre,
                         categoria_id: prod.categoria_id,
@@ -93,7 +91,6 @@ async function cargarDatosIniciales() {
                     }
                 }
                 
-                // Recargar productos después de actualizar
                 productos = await window.electronAPI.getProductos() || [];
                 console.log('✅ Productos recargados:', productos.map(p => ({ 
                     nombre: p.nombre, 
@@ -108,6 +105,7 @@ async function cargarDatosIniciales() {
         cargarDatosDemo();
     }
 }
+
 // Insertar productos de demostración con stock
 async function insertarProductosDemo() {
     const productosDemo = [
@@ -193,7 +191,6 @@ function setupNavigation() {
 
 // MODAL PARA ACTUALIZAR TASA
 function mostrarModalTasa() {
-    // Eliminar cualquier modal existente
     const modalesExistentes = document.querySelectorAll('.modal');
     modalesExistentes.forEach(modal => modal.remove());
     
@@ -221,12 +218,10 @@ function mostrarModalTasa() {
     
     document.body.appendChild(modal);
     
-    // Cancelar
     document.getElementById('cancelar-tasa').addEventListener('click', () => {
         document.body.removeChild(modal);
     });
     
-    // Guardar
     document.getElementById('guardar-tasa').addEventListener('click', async () => {
         const nuevaTasa = parseFloat(document.getElementById('nueva-tasa').value);
         
@@ -253,7 +248,6 @@ function mostrarModalTasa() {
         else if (activePage === 'productos') loadProductos();
     });
     
-    // Cerrar con Escape
     modal.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             document.body.removeChild(modal);
@@ -263,12 +257,11 @@ function mostrarModalTasa() {
     document.getElementById('nueva-tasa').focus();
 }
 
-// DASHBOARD
+// DASHBOARD (con tarjeta reemplazada)
 async function loadDashboard() {
     const content = document.getElementById('page-content');
     if (!content) return;
 
-    // Obtener ventas del día
     let ventasDia = { cantidad: 0, total: 0 };
     try {
         if (window.electronAPI?.getVentasDia) {
@@ -289,7 +282,6 @@ async function loadDashboard() {
     
     const totalProductos = productos.length;
     const stockBajo = productos.filter(p => (p.stock_actual || 0) <= (p.stock_minimo || 5)).length;
-    const totalStock = productos.reduce((sum, p) => sum + (p.stock_actual || 0), 0);
     
     content.innerHTML = `
         <div class="dashboard-grid">
@@ -317,12 +309,12 @@ async function loadDashboard() {
                     <small>Click para actualizar</small>
                 </div>
             </div>
-            <div class="card card-danger">
-                <div class="card-icon"><i class="fas fa-exclamation-triangle"></i></div>
+            <div class="card card-info">
+                <div class="card-icon"><i class="fas fa-cubes"></i></div>
                 <div class="card-content">
-                    <h3>Stock Total</h3>
-                    <p class="card-value">${totalStock}</p>
-                    <small>Unidades en inventario</small>
+                    <h3>Productos Activos</h3>
+                    <p class="card-value">${totalProductos}</p>
+                    <small>Total de productos</small>
                 </div>
             </div>
         </div>
@@ -352,7 +344,7 @@ async function loadDashboard() {
                     <div>
                         <strong>${p.nombre}</strong>
                         <span style="margin-left:10px; background:#e2e8f0; padding:2px 8px; border-radius:12px; font-size:11px;">
-                            ${p.stock_actual || 0} und
+                            ${(p.stock_actual || 0).toFixed(2)} ${p.unidad_medida}
                         </span>
                     </div>
                     <div class="product-price">${calcularPrecioBs(p).toLocaleString()} Bs</div>
@@ -376,7 +368,7 @@ async function loadDashboard() {
         console.log('🔄 Actualizando dashboard manualmente');
         await loadDashboard();
     });
-} // ← ESTA LLAVE CIERRA LA FUNCIÓN loadDashboard
+}
 
 // PÁGINA DE PRODUCTOS
 function loadProductos() {
@@ -416,7 +408,7 @@ function loadProductos() {
                             <td class="text-right font-bold">${calcularPrecioBs(p).toLocaleString()} Bs</td>
                             <td class="text-center">
                                 <span class="stock-badge ${stockBajo ? 'stock-bajo' : 'stock-normal'}">
-                                    ${stockActual}
+                                    ${stockActual.toFixed(2)}
                                 </span>
                             </td>
                             <td class="text-center">${stockMinimo}</td>
@@ -485,7 +477,6 @@ function loadVentas() {
                            placeholder="Escribe nombre del producto..." autofocus>
                     
                     <div id="resultados-busqueda" class="resultados-grid">
-                        <!-- Los productos aparecerán aquí -->
                         <div class="loading-message">Escribe para buscar productos...</div>
                     </div>
                 </div>
@@ -499,7 +490,7 @@ function loadVentas() {
                     
                     <div class="carrito-total">
                         <span>TOTAL:</span>
-                        <span id="total-venta" class="total-valor">0,00 Bs</span>
+                        <span id="total-venta" class="total-valor">0 Bs</span>
                     </div>
                     
                     <div class="metodos-pago">
@@ -520,13 +511,9 @@ function loadVentas() {
         </div>
     `;
     
-    // Inicializar el buscador
     setupBuscadorVentas();
-
-    // Configurar botón de finalizar venta
     setupFinalizarVenta();
 
-    // Configurar botón de cancelar
     document.getElementById('cancelar-venta').addEventListener('click', () => {
         if (carritoVentas.length > 0) {
             if (confirm('¿Cancelar la venta actual?')) {
@@ -546,8 +533,6 @@ function setupBuscadorVentas() {
     
     buscador.addEventListener('input', (e) => {
         const termino = e.target.value.trim();
-        
-        // Limpiar timeout anterior (para no buscar en cada letra)
         clearTimeout(timeoutId);
         
         if (termino.length < 2) {
@@ -556,7 +541,6 @@ function setupBuscadorVentas() {
             return;
         }
         
-        // Esperar 300ms después de dejar de escribir
         timeoutId = setTimeout(() => {
             buscarProductosVenta(termino);
         }, 300);
@@ -569,8 +553,6 @@ async function buscarProductosVenta(termino) {
     resultadosDiv.innerHTML = '<div class="loading-message">Buscando...</div>';
     
     try {
-        // Obtener todos los productos (ya los tenemos en memoria)
-        // Filtrar localmente para mayor velocidad
         const resultados = productos.filter(p => 
             p.nombre.toLowerCase().includes(termino.toLowerCase()) &&
             p.activo !== 0
@@ -581,7 +563,6 @@ async function buscarProductosVenta(termino) {
             return;
         }
         
-        // Mostrar resultados
         resultadosDiv.innerHTML = resultados.map(p => {
             const precioBs = calcularPrecioBs(p);
             const stockActual = p.stock_actual || 0;
@@ -589,11 +570,11 @@ async function buscarProductosVenta(termino) {
             
             return `
                 <div class="producto-venta-card" data-id="${p.id}" 
-                     onclick="agregarAlCarrito(${p.id})">
+                     onclick="seleccionarProducto(${p.id})">
                     <div class="producto-nombre">${p.nombre}</div>
                     <div class="producto-precio">${precioBs.toLocaleString()} Bs</div>
                     <div class="producto-stock ${stockClass}">
-                        Stock: ${stockActual}
+                        Stock: ${stockActual.toFixed(2)} ${p.unidad_medida}
                     </div>
                 </div>
             `;
@@ -608,102 +589,176 @@ async function buscarProductosVenta(termino) {
 // Variable global para el carrito
 let carritoVentas = [];
 
-// Agregar producto al carrito
-window.agregarAlCarrito = async function(productoId) {
-    const producto = productos.find(p => p.id == productoId);
-    if (!producto) return;
-    
-    const stockActual = producto.stock_actual || 0;
-    if (stockActual <= 0) {
-        alert('❌ Producto sin stock disponible');
-        return;
-    }
-    
-    // Buscar si ya está en el carrito
-    const itemExistente = carritoVentas.find(item => item.id === productoId);
-    
-    if (itemExistente) {
-        // Verificar stock
-        if (itemExistente.cantidad >= stockActual) {
-            alert('❌ No hay suficiente stock');
-            return;
-        }
-        itemExistente.cantidad++;
+// Seleccionar producto (abre modal con opciones de cantidad/monto)
+window.seleccionarProducto = function(productoId) {
+  const producto = productos.find(p => p.id === productoId);
+  if (!producto) return;
+
+  const precioBs = calcularPrecioBs(producto);
+  const unidad = producto.unidad_medida || 'unidad';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `
+    <div class="modal-content" style="width: 400px;">
+      <h3>${producto.nombre}</h3>
+      <p>Precio: ${precioBs} Bs/${unidad}</p>
+      
+      <div style="margin-bottom: 15px;">
+        <label style="display: block; margin-bottom: 5px;">Modo de ingreso:</label>
+        <select id="modo-ingreso" class="form-control">
+          <option value="cantidad">Por cantidad (${unidad})</option>
+          <option value="monto">Por monto (Bs)</option>
+        </select>
+      </div>
+      
+      <div id="input-cantidad" style="display: block;">
+        <div class="form-group">
+          <label>Cantidad (${unidad}):</label>
+          <input type="number" id="cantidad-venta" step="0.01" min="0.01" value="1" class="form-control">
+        </div>
+        <div style="margin: 10px 0; text-align: center; font-weight: bold;">
+          Total: <span id="total-preview-cantidad">${precioBs} Bs</span>
+        </div>
+      </div>
+      
+      <div id="input-monto" style="display: none;">
+        <div class="form-group">
+          <label>Monto (Bs):</label>
+          <input type="number" id="monto-venta" step="100" min="100" value="${precioBs}" class="form-control">
+        </div>
+        <div style="margin: 10px 0; text-align: center; font-weight: bold;">
+          Equivale a: <span id="cantidad-preview-monto">1 ${unidad}</span>
+        </div>
+      </div>
+      
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancelar</button>
+        <button class="btn btn-primary" id="btn-agregar-venta">Agregar al carrito</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const modoSelect = document.getElementById('modo-ingreso');
+  const divCantidad = document.getElementById('input-cantidad');
+  const divMonto = document.getElementById('input-monto');
+  const inputCantidad = document.getElementById('cantidad-venta');
+  const inputMonto = document.getElementById('monto-venta');
+  const totalPreviewCantidad = document.getElementById('total-preview-cantidad');
+  const cantidadPreviewMonto = document.getElementById('cantidad-preview-monto');
+  const btnAgregar = document.getElementById('btn-agregar-venta');
+
+  modoSelect.addEventListener('change', function() {
+    if (this.value === 'cantidad') {
+      divCantidad.style.display = 'block';
+      divMonto.style.display = 'none';
+      actualizarPreviewCantidad();
     } else {
-        carritoVentas.push({
-            id: producto.id,
-            nombre: producto.nombre,
-            precio: calcularPrecioBs(producto),
-            cantidad: 1,
-            stock: stockActual
-        });
+      divCantidad.style.display = 'none';
+      divMonto.style.display = 'block';
+      actualizarPreviewMonto();
     }
-    
+  });
+
+  function actualizarPreviewCantidad() {
+    const cant = parseFloat(inputCantidad.value) || 0;
+    totalPreviewCantidad.textContent = (precioBs * cant).toFixed(0) + ' Bs';
+  }
+
+  function actualizarPreviewMonto() {
+    const monto = parseFloat(inputMonto.value) || 0;
+    const cantidadEquivalente = monto / precioBs;
+    cantidadPreviewMonto.textContent = cantidadEquivalente.toFixed(3) + ' ' + unidad;
+  }
+
+  inputCantidad.addEventListener('input', actualizarPreviewCantidad);
+  inputMonto.addEventListener('input', actualizarPreviewMonto);
+
+  btnAgregar.addEventListener('click', function() {
+    const modo = modoSelect.value;
+    let cantidad, monto, tipoIngreso;
+
+    if (modo === 'cantidad') {
+      cantidad = parseFloat(inputCantidad.value);
+      if (isNaN(cantidad) || cantidad <= 0) {
+        alert('Cantidad inválida');
+        return;
+      }
+      monto = precioBs * cantidad;
+      tipoIngreso = 'cantidad';
+    } else {
+      monto = parseFloat(inputMonto.value);
+      if (isNaN(monto) || monto <= 0) {
+        alert('Monto inválido');
+        return;
+      }
+      cantidad = +(monto / precioBs).toFixed(3);  // Redondeo a 3 decimales
+      tipoIngreso = 'monto';
+    }
+
+    if (cantidad > producto.stock_actual) {
+      alert(`Stock insuficiente. Solo hay ${producto.stock_actual.toFixed(2)} ${unidad}`);
+      return;
+    }
+
+    carritoVentas.push({
+      producto_id: producto.id,
+      nombre: producto.nombre,
+      cantidad: cantidad,
+      unidad: unidad,
+      precio_unitario: precioBs,
+      subtotal: monto,
+      tipo_ingreso: tipoIngreso,
+      detalle: tipoIngreso === 'cantidad' 
+        ? `${cantidad.toFixed(3)} ${unidad}`
+        : `Bs ${monto.toFixed(0)} (${cantidad.toFixed(3)} ${unidad})`
+    });
+
+    modal.remove();
     actualizarCarritoUI();
+  });
+
+  inputCantidad.focus();
 };
 
-// Actualizar la interfaz del carrito
+// Actualizar carrito UI
 function actualizarCarritoUI() {
-    const carritoDiv = document.getElementById('carrito-items');
-    const totalSpan = document.getElementById('total-venta');
-    
-    if (carritoVentas.length === 0) {
-        carritoDiv.innerHTML = '<div class="carrito-vacio">El carrito está vacío</div>';
-        totalSpan.textContent = '0,00 Bs';
-        return;
-    }
-    
-    let total = 0;
-    carritoDiv.innerHTML = carritoVentas.map(item => {
-        const subtotal = item.precio * item.cantidad;
-        total += subtotal;
-        
-        return `
-            <div class="carrito-item">
-                <div class="carrito-item-info">
-                    <div class="carrito-item-nombre">${item.nombre}</div>
-                    <div class="carrito-item-precio">${item.precio.toLocaleString()} Bs c/u</div>
-                </div>
-                <div class="carrito-item-cantidad">
-                    <button class="btn-cantidad" onclick="cambiarCantidad(${item.id}, -1)">-</button>
-                    <span>${item.cantidad}</span>
-                    <button class="btn-cantidad" onclick="cambiarCantidad(${item.id}, 1)">+</button>
-                </div>
-                <div class="carrito-item-subtotal">
-                    ${subtotal.toLocaleString()} Bs
-                </div>
-                <button class="btn-eliminar" onclick="eliminarDelCarrito(${item.id})">🗑️</button>
-            </div>
-        `;
-    }).join('');
-    
-    totalSpan.textContent = total.toLocaleString() + ' Bs';
+  const container = document.getElementById('carrito-items');
+  const totalSpan = document.getElementById('total-venta');
+
+  if (!container) return;
+
+  if (carritoVentas.length === 0) {
+    container.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Carrito vacío</p>';
+    totalSpan.textContent = '0 Bs';
+    return;
+  }
+
+  let total = 0;
+  container.innerHTML = carritoVentas.map((item, index) => {
+    total += item.subtotal;
+    return `
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid #eee;">
+        <div style="flex: 1;">
+          <div><strong>${item.nombre}</strong></div>
+          <div style="font-size: 12px; color: #666;">${item.detalle}</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-weight: bold; color: #2563eb;">${item.subtotal.toFixed(0)} Bs</span>
+          <button onclick="eliminarDelCarrito(${index})" style="background: none; border: none; color: #ef4444; cursor: pointer; font-size: 16px;">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  totalSpan.textContent = total.toFixed(0) + ' Bs';
 }
 
-// Cambiar cantidad en el carrito
-window.cambiarCantidad = function(productoId, delta) {
-    const item = carritoVentas.find(i => i.id === productoId);
-    if (!item) return;
-    
-    const nuevaCantidad = item.cantidad + delta;
-    
-    if (nuevaCantidad < 1) {
-        eliminarDelCarrito(productoId);
-        return;
-    }
-    
-    if (nuevaCantidad > item.stock) {
-        alert('❌ No hay suficiente stock');
-        return;
-    }
-    
-    item.cantidad = nuevaCantidad;
-    actualizarCarritoUI();
-};
-
 // Eliminar del carrito
-window.eliminarDelCarrito = function(productoId) {
-    carritoVentas = carritoVentas.filter(i => i.id !== productoId);
+window.eliminarDelCarrito = function(index) {
+    carritoVentas.splice(index, 1);
     actualizarCarritoUI();
 };
 
@@ -719,13 +774,10 @@ function setupFinalizarVenta() {
         }
         
         const metodoPago = document.getElementById('metodo-pago').value;
-        const total = carritoVentas.reduce((sum, item) => 
-            sum + (item.precio * item.cantidad), 0
-        );
+        const total = carritoVentas.reduce((sum, item) => sum + item.subtotal, 0);
         
-        // Mostrar resumen de la venta
         const resumen = carritoVentas.map(item => 
-            `${item.nombre} x${item.cantidad} = ${(item.precio * item.cantidad).toLocaleString()} Bs`
+            `${item.nombre} - ${item.detalle} = ${item.subtotal.toLocaleString()} Bs`
         ).join('\n');
         
         if (!confirm(`¿Registrar venta?\n\n${resumen}\n\nTOTAL: ${total.toLocaleString()} Bs\nMétodo: ${metodoPago}`)) {
@@ -733,9 +785,8 @@ function setupFinalizarVenta() {
         }
         
         try {
-            // Verificar stock nuevamente
             for (const item of carritoVentas) {
-                const producto = productos.find(p => p.id === item.id);
+                const producto = productos.find(p => p.id === item.producto_id);
                 if (!producto || (producto.stock_actual || 0) < item.cantidad) {
                     alert(`❌ Stock insuficiente para ${item.nombre}`);
                     return;
@@ -744,9 +795,12 @@ function setupFinalizarVenta() {
             
             const resultado = await window.electronAPI.registrarVenta({
                 items: carritoVentas.map(item => ({
-                    id: item.id,
+                    producto_id: item.producto_id,
                     cantidad: item.cantidad,
-                    precio: item.precio
+                    precio_unitario: item.precio_unitario,
+                    subtotal: item.subtotal,
+                    tipo_ingreso: item.tipo_ingreso || null,
+                    unidad: item.unidad
                 })),
                 total: total,
                 metodoPago: metodoPago
@@ -754,41 +808,27 @@ function setupFinalizarVenta() {
             
             if (resultado.success) {
                 alert('✅ Venta registrada exitosamente');
-                
-                // Limpiar carrito
                 carritoVentas = [];
                 actualizarCarritoUI();
-                
-                // Recargar productos (para actualizar stock)
                 productos = await window.electronAPI.getProductos() || [];
-                
-                // Limpiar búsqueda
                 document.getElementById('buscador-ventas').value = '';
                 document.getElementById('resultados-busqueda').innerHTML = 
                     '<div class="loading-message">Escribe para buscar productos...</div>';
                 
-                // 🔥 ACTUALIZAR DASHBOARD SI ESTAMOS EN ÉL
-    const activePage = document.querySelector('.nav-item.active')?.getAttribute('data-page');
-    if (activePage === 'dashboard') {
-        await loadDashboard();
-        console.log('📊 Dashboard actualizado con nuevas ventas');
-    } 
-    // Limpiar búsqueda
-    document.getElementById('buscador-ventas').value = '';
-    document.getElementById('resultados-busqueda').innerHTML = 
-        '<div class="loading-message">Escribe para buscar productos...</div>';
+                const activePage = document.querySelector('.nav-item.active')?.getAttribute('data-page');
+                if (activePage === 'dashboard') {
+                    await loadDashboard();
                 }
             }
-        catch (error) {
+        } catch (error) {
             console.error('Error registrando venta:', error);
             alert('❌ Error al registrar la venta. Revisa la consola para más detalles.');
         }
     });
 }
 
-// FORMULARIO DE PRODUCTO - VERSIÓN CORREGIDA
+// FORMULARIO DE PRODUCTO - CON UNIDAD DE MEDIDA
 function mostrarFormularioProducto(producto = null) {
-    // Eliminar cualquier modal existente
     const modalesExistentes = document.querySelectorAll('.modal');
     modalesExistentes.forEach(modal => modal.remove());
     
@@ -818,6 +858,17 @@ function mostrarFormularioProducto(producto = null) {
                 <select id="producto-categoria" class="form-control">
                     <option value="">-- Seleccionar --</option>
                     ${categoriasOptions}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Unidad de medida</label>
+                <select id="producto-unidad" class="form-control">
+                    <option value="unidad" ${producto?.unidad_medida === 'unidad' ? 'selected' : ''}>Unidad</option>
+                    <option value="kg" ${producto?.unidad_medida === 'kg' ? 'selected' : ''}>Kilogramo (kg)</option>
+                    <option value="g" ${producto?.unidad_medida === 'g' ? 'selected' : ''}>Gramo (g)</option>
+                    <option value="l" ${producto?.unidad_medida === 'l' ? 'selected' : ''}>Litro (l)</option>
+                    <option value="ml" ${producto?.unidad_medida === 'ml' ? 'selected' : ''}>Mililitro (ml)</option>
                 </select>
             </div>
             
@@ -865,7 +916,7 @@ function mostrarFormularioProducto(producto = null) {
                 </div>
                 <div class="form-group" style="flex:1;">
                     <label>Stock actual</label>
-                    <input type="number" id="producto-stock-actual" min="0" 
+                    <input type="number" id="producto-stock-actual" min="0" step="0.01"
                            value="${producto?.stock_actual || 0}" class="form-control">
                 </div>
             </div>
@@ -881,7 +932,6 @@ function mostrarFormularioProducto(producto = null) {
     
     document.body.appendChild(modal);
     
-    // Preview de precio
     const updatePreview = () => {
         if (document.getElementById('producto-tipo').value !== 'auto') return;
         const usd = parseFloat(document.getElementById('producto-precio-usd').value) || 0;
@@ -902,12 +952,10 @@ function mostrarFormularioProducto(producto = null) {
     document.getElementById('producto-precio-usd')?.addEventListener('input', updatePreview);
     document.getElementById('producto-margen')?.addEventListener('input', updatePreview);
     
-    // Cancelar
     document.getElementById('btn-cancelar').addEventListener('click', () => {
         document.body.removeChild(modal);
     });
     
-    // Guardar
     document.getElementById('guardar-producto').addEventListener('click', async () => {
         const nombre = document.getElementById('producto-nombre').value.trim();
         if (!nombre) {
@@ -916,11 +964,13 @@ function mostrarFormularioProducto(producto = null) {
         }
         
         const tipo = document.getElementById('producto-tipo').value;
+        const unidad = document.getElementById('producto-unidad').value;
         const productoData = {
             nombre: nombre,
             categoria_id: document.getElementById('producto-categoria').value || null,
-            stock_minimo: parseInt(document.getElementById('producto-stock-min').value) || 5,
-            stock_actual: parseInt(document.getElementById('producto-stock-actual').value) || 0,
+            unidad_medida: unidad,
+            stock_minimo: parseFloat(document.getElementById('producto-stock-min').value) || 5,
+            stock_actual: parseFloat(document.getElementById('producto-stock-actual').value) || 0,
             usar_calculo_automatico: tipo === 'auto' ? 1 : 0
         };
         
@@ -934,7 +984,7 @@ function mostrarFormularioProducto(producto = null) {
             productoData.margen_sugerido = parseInt(document.getElementById('producto-margen').value) || 30;
             productoData.precio_manual_bs = null;
         } else {
-            const precioFijo = parseInt(document.getElementById('producto-precio-fijo').value);
+            const precioFijo = parseFloat(document.getElementById('producto-precio-fijo').value);
             if (isNaN(precioFijo) || precioFijo <= 0) {
                 alert('⚠️ Ingrese un precio fijo válido');
                 return;
@@ -953,10 +1003,7 @@ function mostrarFormularioProducto(producto = null) {
                 alert('✅ Producto creado');
             }
             
-            // IMPORTANTE: Eliminar modal antes de recargar
             document.body.removeChild(modal);
-            
-            // Recargar datos
             productos = await window.electronAPI.getProductos() || [];
             const activePage = document.querySelector('.nav-item.active').getAttribute('data-page');
             if (activePage === 'productos') loadProductos();
@@ -968,7 +1015,6 @@ function mostrarFormularioProducto(producto = null) {
         }
     });
     
-    // Cerrar con Escape
     modal.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             document.body.removeChild(modal);
@@ -1006,7 +1052,7 @@ function setupButtons() {
     });
 }
 
-// Estilos adicionales
+// Estilos adicionales (incluyendo card-info)
 const style = document.createElement('style');
 style.textContent = `
     .quick-actions { background: white; border-radius: 12px; padding: 25px; margin-top: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
@@ -1042,5 +1088,11 @@ style.textContent = `
     .coming-soon { text-align: center; padding: 80px 20px; background: white; border-radius: 12px; }
     .form-row { display: flex; gap: 15px; margin-bottom: 15px; }
     .form-row .form-group { flex: 1; }
+
+    /* Nueva tarjeta info */
+    .card-info .card-icon {
+        background: #cffafe;
+        color: #0891b2;
+    }
 `;
 document.head.appendChild(style);

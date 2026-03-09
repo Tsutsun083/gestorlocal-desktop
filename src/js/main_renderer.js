@@ -5,6 +5,7 @@ import { cargarDatosIniciales } from './init.js';
 import { loadProductos, cargarProductos, mostrarFormularioProducto } from './productos.js';
 import { loadVentas } from './ventas.js';
 import { loadDashboard } from './dashboard.js';
+import { loadReportes } from './reportes.js';
 
 // ============================================
 // INICIALIZACIÓN
@@ -59,6 +60,9 @@ function setupNavigation() {
                     break;
                 case 'ventas':
                     loadVentas();
+                    break;
+                case 'reportes':
+                    loadReportes();
                     break;
                 default:
                     loadPlaceholder(page, titles[page]);

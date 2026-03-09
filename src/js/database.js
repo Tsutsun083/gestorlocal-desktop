@@ -51,3 +51,14 @@ export async function registrarVenta(ventaData) {
 export async function getVentasDia() {
     return await window.electronAPI.getVentasDia();
 }
+
+// ============================================
+// REPORTES
+// ============================================
+export async function getHistorialVentas() {
+    return await window.electronAPI.getHistorialVentas();
+}
+
+export async function getTotalesReportes() {
+    return await window.electronAPI.getTotalesReportes();
+}

@@ -13,7 +13,7 @@
   "type": "commonjs",
   "devDependencies": {
     "@electron/rebuild": "^4.0.3",
-    "electron": "^40.4.1"
+    "electron": "^40.8.0"
   },
   "dependencies": {
     "sqlite3": "^5.1.6"

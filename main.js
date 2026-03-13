@@ -619,7 +619,53 @@ ipcMain.handle('get-ventas-dia', async () => {
     });
   });
 });
+// ============================================
+// REPORTES
+// ============================================
 
+// 1. Obtener el historial completo
+ipcMain.handle('get-historial-ventas', async () => {
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      // Traemos las últimas 100 ventas
+      db.all("SELECT * FROM ventas ORDER BY fecha DESC LIMIT 100", [], (err, rows) => {
+        if (err) {
+          console.error('❌ Error obteniendo historial:', err);
+          reject(err);
+        } else {
+          resolve(rows || []);
+        }
+      });
+    });
+  });
+});
+
+// 2. Obtener los totales (Hoy, Semana, Mes)
+ipcMain.handle('get-totales-reportes', async () => {
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      const query = `
+        SELECT 
+          SUM(CASE WHEN date(fecha) = date('now', 'localtime') THEN total ELSE 0 END) as hoy,
+          SUM(CASE WHEN strftime('%Y-%W', fecha) = strftime('%Y-%W', 'now', 'localtime') THEN total ELSE 0 END) as semana,
+          SUM(CASE WHEN strftime('%m-%Y', fecha) = strftime('%m-%Y', 'now', 'localtime') THEN total ELSE 0 END) as mes
+        FROM ventas
+      `;
+      db.get(query, [], (err, row) => {
+        if (err) {
+          console.error('❌ Error calculando totales:', err);
+          reject(err);
+        } else {
+          resolve({
+            hoy: row?.hoy || 0,
+            semana: row?.semana || 0,
+            mes: row?.mes || 0
+          });
+        }
+      });
+    });
+  });
+});
 // ============================================
 // CONTROL DE VENTANAS
 // ============================================

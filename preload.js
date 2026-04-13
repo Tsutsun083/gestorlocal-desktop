@@ -22,6 +22,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     registrarVenta: (ventaData) => ipcRenderer.invoke('registrar-venta', ventaData),
     getVentasDia: () => ipcRenderer.invoke('get-ventas-dia'),
 
+    // COMPRAS/PROVEEDORES
+    getProveedores: () => ipcRenderer.invoke('get-proveedores'),
+    addProveedor: (proveedor) => ipcRenderer.invoke('add-proveedor', proveedor),
+    updateProveedor: (id, proveedor) => ipcRenderer.invoke('update-proveedor', id, proveedor),
+    deleteProveedor: (id) => ipcRenderer.invoke('delete-proveedor', id),
+    crearOrdenCompra: (ordenData) => ipcRenderer.invoke('crear-orden-compra', ordenData),
+    recibirOrden: (ordenId, items) => ipcRenderer.invoke('recibir-orden', ordenId, items),
+    getOrdenesCompra: () => ipcRenderer.invoke('get-ordenes-compra'),
+    getOrdenDetalle: (ordenId) => ipcRenderer.invoke('get-orden-detalle', ordenId),
+    updateOrdenCompra: (id, datos) => ipcRenderer.invoke('update-orden-compra', id, datos),
+    updateOrdenCompleta: (id, ordenData) => ipcRenderer.invoke('update-orden-completa', id, ordenData),
+
     // REPORTES
     getHistorialVentas: () => ipcRenderer.invoke('get-historial-ventas'),
     getTotalesReportes: () => ipcRenderer.invoke('get-totales-reportes'),

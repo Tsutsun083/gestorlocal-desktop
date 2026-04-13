@@ -1,11 +1,10 @@
-// main.renderer.js - Punto de entrada principal
-
 import { inyectarEstilosGlobales, loadPlaceholder } from './ui.js';
 import { cargarDatosIniciales } from './init.js';
 import { loadProductos, cargarProductos, mostrarFormularioProducto } from './productos.js';
 import { loadVentas } from './ventas.js';
 import { loadDashboard } from './dashboard.js';
 import { loadReportes } from './reportes.js';
+import { loadCompras } from './compras.js';
 
 // ============================================
 // INICIALIZACIÓN
@@ -60,6 +59,9 @@ function setupNavigation() {
                     break;
                 case 'ventas':
                     loadVentas();
+                    break;
+                case 'compras':
+                    loadCompras();
                     break;
                 case 'reportes':
                     loadReportes();

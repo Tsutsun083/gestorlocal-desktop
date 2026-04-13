@@ -53,6 +53,60 @@ export async function getVentasDia() {
 }
 
 // ============================================
+// PROVEEDORES (NUEVAS)
+// ============================================
+export async function getProveedores() {
+    return await window.electronAPI.getProveedores();
+}
+
+export async function addProveedor(proveedorData) {
+    return await window.electronAPI.addProveedor(proveedorData);
+}
+
+export async function updateProveedor(id, proveedorData) {
+    return await window.electronAPI.updateProveedor(id, proveedorData);
+}
+
+export async function deleteProveedor(id) {
+    return await window.electronAPI.deleteProveedor(id);
+}
+
+// ============================================
+// ÓRDENES DE COMPRA (NUEVAS)
+// ============================================
+export async function getOrdenesCompra() {
+    return await window.electronAPI.getOrdenesCompra();
+}
+
+export async function getOrdenDetalle(ordenId) {
+    return await window.electronAPI.getOrdenDetalle(ordenId);
+}
+
+export async function crearOrdenCompra(ordenData) {
+    return await window.electronAPI.crearOrdenCompra(ordenData);
+}
+
+export async function recibirOrden(ordenId, itemsModificados) {
+    return await window.electronAPI.recibirOrden(ordenId, itemsModificados);
+}
+
+export async function addOrdenCompra(ordenData) {
+    return await window.electronAPI.addOrdenCompra(ordenData);
+}
+
+export async function updateOrdenCompleta(id, ordenData) {
+    return await window.electronAPI.updateOrdenCompleta(id, ordenData);
+}
+
+export async function updateOrdenCompra(id, datos) {
+    return await window.electronAPI.updateOrdenCompra(id, datos);
+}
+
+export async function deleteOrdenCompra(id) {
+    return await window.electronAPI.deleteOrdenCompra(id);
+}
+
+// ============================================
 // REPORTES
 // ============================================
 export async function getHistorialVentas() {

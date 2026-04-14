@@ -18,7 +18,7 @@ export async function loadClientes() {
     content.innerHTML = `
         <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
             <h2>👥 Gestión de Clientes</h2>
-            <button class="btn btn-primary\" id="btn-nuevo-cliente">
+            <button class="btn btn-primary" id="btn-nuevo-cliente">
                 <i class="fas fa-user-plus"></i> Nuevo Cliente
             </button>
         </div>
@@ -81,7 +81,7 @@ export async function loadClientes() {
         });
     });
     // Evento para nuevo cliente
-    document.getElementById('btn-nuevo-cliente')?.addEventListener('click', mostrarModalNuevoCliente);
+    document.getElementById('btn-nuevo-cliente').addEventListener('click', () => mostrarFormularioCliente());
 }
 function renderizarTablaClientes(lista) {
     const tbody = document.getElementById('tabla-clientes-body');
@@ -252,7 +252,7 @@ function mostrarModalCobro(id, nombre, deudaActual) {
         const metodo = document.getElementById('abono-metodo').value;
 
         if (isNaN(monto) || monto <= 0 || monto > (deudaActual + 0.01)) {
-            return mostrarNotificacion('¡Epa! Meté un monto válido, ni más ni menos.', 'error');
+            return mostrarNotificacion('¡Monto inválido! Ingresá un monto válido', 'error');
         }
 
         try {
@@ -268,7 +268,7 @@ function mostrarModalCobro(id, nombre, deudaActual) {
             loadClientes(); // Recargamos la tabla para que se vea el saldo nuevo
         } catch (error) {
             console.error(error);
-            mostrarNotificacion('Molleja, hubo un error procesando el pago.', 'error');
+            mostrarNotificacion('Hubo un error procesando el pago.', 'error');
         }
     });
 }

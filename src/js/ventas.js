@@ -1,10 +1,9 @@
 // ventas.js - Funciones para el punto de venta
 
 import { productos, carritoVentas, setCarritoVentas, configuracion, calcularPrecioBs, redondearCantidad } from './state.js';
-import { getProductos, registrarVenta } from './database.js';
+import { getProductos, registrarVenta, getClientes } from './database.js';
 import { crearModal, cerrarTodosLosModales, mostrarNotificacion } from './ui.js';
 import { clienteSeleccionado, setClienteSeleccionado } from './state.js';
-import { buscarClientesFiltro } from './clientes.js';
 
 // ============================================
 // CARGA INICIAL
@@ -25,6 +24,13 @@ export function loadVentas() {
     
 
     content.innerHTML = `
+    <div class="ventas-container">
+    <div style="background: #f1f5f9; padding: 10px; margin-bottom: 15px; border-radius: 8px; display: flex; align-items: center; gap: 15px;">
+        <button id="btn-seleccionar-cliente" class="btn btn-secondary">👤 Asignar Cliente</button>
+        <span style="font-size: 1.1rem;">Cliente actual: <strong id="label-cliente-venta">Ninguno (Obligatorio)</strong></span>
+    </div>
+    
+    <div class="ventas-grid">
         <div class="ventas-container">
             <div class="ventas-grid">
                 <!-- Panel izquierdo: Búsqueda y productos -->
@@ -71,6 +77,8 @@ export function loadVentas() {
     setupBuscadorVentas();
     setupFinalizarVenta();
 
+    document.getElementById('btn-seleccionar-cliente').addEventListener('click', abrirModalClientes);
+
     document.getElementById('cancelar-venta').addEventListener('click', () => {
         if (carritoVentas.length > 0) {
             if (confirm('¿Cancelar la venta actual?')) {
@@ -78,7 +86,8 @@ export function loadVentas() {
                 actualizarCarritoUI();
             }
         }
-    });
+    }); 
+    
 }
 
 // ============================================
@@ -333,6 +342,9 @@ function setupFinalizarVenta() {
     if (!btnFinalizar) return;
     
     btnFinalizar.addEventListener('click', async () => {
+        if (!clienteSeleccionado) {
+        return mostrarNotificacion("Tienes que asignarle un cliente a la venta primero.", "error");
+        }
         if (carritoVentas.length === 0) {
             mostrarNotificacion('❌ El carrito está vacío', 'error');
             return;
@@ -361,6 +373,7 @@ function setupFinalizarVenta() {
             
             const resultado = await registrarVenta({
                 items: carritoVentas.map(item => ({
+                    cliente_id: clienteSeleccionado.id,
                     producto_id: item.producto_id,
                     cantidad: item.cantidad,
                     precio_unitario: item.precio_unitario,
@@ -396,4 +409,58 @@ function setupFinalizarVenta() {
             mostrarNotificacion('❌ Error al registrar la venta', 'error');
         }
     });
+}
+// ============================================
+// MODAL DE SELECCIÓN DE CLIENTE
+// ============================================
+async function abrirModalClientes() {
+    const clientes = await getClientes() || [];
+
+    const contenido = `
+        <div style="padding: 10px;">
+            <p>Selecciona a quién le vas a vender:</p>
+            <select id="select-modal-cliente" class="form-control" style="margin-bottom: 20px; font-size: 16px;">
+                <option value="">-- Elegí un cliente --</option>
+                <option value="cf">👤 Consumidor Final</option>
+                ${clientes.map(c => `<option value="${c.id}">${c.nombre} (${c.ci || 'S/C'})</option>`).join('')}
+            </select>
+            <div style="display:flex; justify-content:space-between;">
+                <button id="btn-nuevo-cliente-modal" class="btn btn-secondary">➕ Ir a crear nuevo</button>
+                <button id="btn-confirmar-cliente" class="btn btn-primary">Confirmar</button>
+            </div>
+        </div>
+    `;
+
+    const modal = crearModal("Asignar Cliente", contenido, "400px");
+
+    // Lógica del botón confirmar
+   document.getElementById('btn-confirmar-cliente').onclick = () => {
+    const select = document.getElementById('select-modal-cliente');
+    const val = select.value;
+    
+    if (val === "") {
+        return mostrarNotificacion("Tienes que elegir a alguien de la lista", "error");
+    }
+
+    if (val === "cf") {
+        setClienteSeleccionado({ id: null, nombre: "Consumidor Final", ci: "V-00000000" });
+        document.getElementById('label-cliente-venta').textContent = "Consumidor Final";
+    } else {
+        // Buscamos el cliente completo en la lista original
+        const cliente = clientes.find(c => c.id == val);
+        
+        if (cliente) {
+            setClienteSeleccionado(cliente);
+            const ident = cliente.ci || 'Sin documento';
+            document.getElementById('label-cliente-venta').textContent = `${cliente.nombre} (${ident})`;
+        }
+    }
+    
+    modal.remove();
+};
+    // Lógica por si quieres registrar uno nuevo
+    document.getElementById('btn-nuevo-cliente-modal').onclick = () => {
+        modal.remove();
+        document.querySelector('[data-page="clientes"]').click();
+    };
 }

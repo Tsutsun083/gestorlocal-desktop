@@ -5,6 +5,7 @@ import { loadVentas } from './ventas.js';
 import { loadDashboard } from './dashboard.js';
 import { loadReportes } from './reportes.js';
 import { loadCompras } from './compras.js';
+import { loadClientes } from './clientes.js';
 
 // ============================================
 // INICIALIZACIÓN
@@ -65,6 +66,9 @@ function setupNavigation() {
                     break;
                 case 'reportes':
                     loadReportes();
+                    break;
+                case 'clientes':
+                    loadClientes();
                     break;
                 default:
                     loadPlaceholder(page, titles[page]);

@@ -5,7 +5,7 @@
 // ============================================
 export let configuracion = { 
     tasa_bcv: 50.00,
-    nombre_egocio: 'Mi Negocio'
+    nombre_negocio: 'Mi Negocio'
 };
 
 export let categorias = [];
@@ -50,4 +50,11 @@ export function calcularPrecioBs(producto) {
 // Redondear cantidad a 3 decimales (útil en ventas)
 export function redondearCantidad(cantidad) {
     return Math.round(cantidad * 1000) / 1000;
+}
+
+//obtenemos el cliente seleccionado para mostrar su info en la venta
+export let clienteSeleccionado = null;
+
+export function setClienteSeleccionado(cliente) {
+    clienteSeleccionado = cliente;
 }

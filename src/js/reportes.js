@@ -86,8 +86,8 @@ async function renderizarTablaHistorial() {
                 <tr>
                     <td>${new Date(v.fecha).toLocaleString()}</td>
                     <td><span class="stock-badge stock-normal">${v.metodo_pago}</span></td>
-                    <td style="font-weight: bold; color: #059669;">${v.total.toFixed(2)} $</td>
-                    <td style="color: #64748b;">${montoBS.toLocaleString('es-VE')} Bs.</td>
+                    <td style="font-weight: bold; color: #059669;">${v.total.toFixed(2)} Bs.</td>
+                    <td style="color: #64748b;">${montoBS.toLocaleString('es-VE')} $</td>
                     <td>
                         <button class="btn-icon btn-edit"><i class="fas fa-eye"></i></button>
                     </td>

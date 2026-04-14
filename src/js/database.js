@@ -116,3 +116,19 @@ export async function getHistorialVentas() {
 export async function getTotalesReportes() {
     return await window.electronAPI.getTotalesReportes();
 }
+
+// ============================================
+// CLIENTES
+// ============================================
+export async function getClientes() {
+    return await window.electronAPI.getClientes();
+}
+export async function addCliente(cliente) {
+    return await window.electronAPI.addCliente(cliente);
+}
+export async function abonarDeudaCliente(datosAbono) {
+    return await window.electronAPI.abonarDeudaCliente(datosAbono);
+}
+export async function asignarDeuda(data) {
+    return await window.electronAPI.asignarDeuda(data);
+}

@@ -393,3 +393,11 @@ body {
     padding: 40px;
     grid-column: 1 / -1;
 }
+
+.item-cliente-select:hover {
+    background-color: #f0f7ff !important;
+    color: #2563eb;
+}
+.selector-cliente-container {
+    padding: 5px;
+}

@@ -3,6 +3,8 @@
 import { productos, carritoVentas, setCarritoVentas, configuracion, calcularPrecioBs, redondearCantidad } from './state.js';
 import { getProductos, registrarVenta } from './database.js';
 import { crearModal, cerrarTodosLosModales, mostrarNotificacion } from './ui.js';
+import { clienteSeleccionado, setClienteSeleccionado } from './state.js';
+import { buscarClientesFiltro } from './clientes.js';
 
 // ============================================
 // CARGA INICIAL
@@ -21,6 +23,7 @@ export function loadVentas() {
     const content = document.getElementById('page-content');
     if (!content) return;
     
+
     content.innerHTML = `
         <div class="ventas-container">
             <div class="ventas-grid">
@@ -34,7 +37,7 @@ export function loadVentas() {
                         <div class="loading-message">Escribe para buscar productos...</div>
                     </div>
                 </div>
-                
+
                 <!-- Panel derecho: Carrito de compras -->
                 <div class="panel-carrito">
                     <h3>🛒 Venta Actual</h3>

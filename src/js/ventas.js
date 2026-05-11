@@ -420,7 +420,7 @@ async function abrirModalClientes() {
         <div style="padding: 10px;">
             <p>Selecciona a quién le vas a vender:</p>
             <select id="select-modal-cliente" class="form-control" style="margin-bottom: 20px; font-size: 16px;">
-                <option value="">-- Elegí un cliente --</option>
+                <option value="">-- Elige un cliente --</option>
                 <option value="cf">👤 Consumidor Final</option>
                 ${clientes.map(c => `<option value="${c.id}">${c.nombre} (${c.ci || 'S/C'})</option>`).join('')}
             </select>

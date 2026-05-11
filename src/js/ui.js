@@ -13,20 +13,33 @@ export function cerrarTodosLosModales() {
     document.querySelectorAll('.modal').forEach(modal => modal.remove());
 }
 
-// Crea un modal básico con título y contenido
 export function crearModal(titulo, contenidoHTML, ancho = '500px') {
     cerrarTodosLosModales();
     
     const modal = document.createElement('div');
     modal.className = 'modal';
+    
     modal.innerHTML = `
         <div class="modal-content" style="width: ${ancho}; max-width: 90%;">
-            <h3>${titulo}</h3>
-            ${contenidoHTML}
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 style="margin: 0;">${titulo}</h3>
+                <button class="btn-cerrar-modal" style="background: none; border: none; font-size: 24px; cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+            <div class="modal-body">
+                ${contenidoHTML}
+            </div>
         </div>
     `;
     
-    // Cerrar con Escape
+    // Cerrar con botón X
+    modal.querySelector('.btn-cerrar-modal').addEventListener('click', () => modal.remove());
+    
+    // Cerrar al hacer clic fuera del modal
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+    
+    // Cerrar con tecla Escape
     modal.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') modal.remove();
     });

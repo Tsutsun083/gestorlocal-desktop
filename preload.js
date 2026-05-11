@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getProductos: () => ipcRenderer.invoke('get-productos'),
     realizarBackup: () => ipcRenderer.invoke('realizar-backup'),
     buscarProductosFTS: (termino) => ipcRenderer.invoke('buscar-productos-fts', termino),
+    getProductosStockBajo: () => ipcRenderer.invoke('get-productos-stock-bajo'),
     
     // CRUD Productos
     addProducto: (producto) => ipcRenderer.invoke('add-producto', producto),

@@ -1,11 +1,11 @@
 // productos.js - Funciones para la gestión de productos
 
 import { productos, categorias, configuracion, setProductos, calcularPrecioBs } from './state.js';
-import { getProductos, addProducto, updateProducto, deleteProducto } from './database.js';
+import { getProductos, addProducto, updateProducto, deleteProducto, getProveedores } from './database.js';
 import { crearModal, cerrarTodosLosModales, mostrarNotificacion } from './ui.js';
 
 // ============================================
-// CARGA INICIAL (llamada desde main.renderer)
+// CARGA INICIAL
 // ============================================
 export async function cargarProductos() {
     const prods = await getProductos();
@@ -13,13 +13,12 @@ export async function cargarProductos() {
 }
 
 // ============================================
-// PÁGINA DE PRODUCTOS
+// PÁGINA DE PRODUCTOS (con nuevas columnas)
 // ============================================
 export async function loadProductos() {
     const content = document.getElementById('page-content');
     if (!content) return;
     
-    // Asegurar que productos esté actualizado
     await cargarProductos();
     
     content.innerHTML = `
@@ -36,6 +35,9 @@ export async function loadProductos() {
                     <tr>
                         <th>Nombre</th>
                         <th>Categoría</th>
+                        <th>Marca</th>
+                        <th>Proveedor</th>
+                        <th>Vencimiento</th>
                         <th>Precio Bs</th>
                         <th>Stock Actual</th>
                         <th>Stock Mínimo</th>
@@ -52,6 +54,9 @@ export async function loadProductos() {
                         <tr data-id="${p.id}">
                             <td>${p.nombre}</td>
                             <td>${p.categoria_nombre || 'Sin categoría'}</td>
+                            <td>${p.marca || '-'}</td>
+                            <td>${p.nombre_proveedor || '-'}</td>
+                            <td>${p.fecha_vencimiento ? new Date(p.fecha_vencimiento).toLocaleDateString() : '-'}</td>
                             <td class="text-right font-bold">${calcularPrecioBs(p).toLocaleString()} Bs</td>
                             <td class="text-center">
                                 <span class="stock-badge ${stockBajo ? 'stock-bajo' : 'stock-normal'}">
@@ -99,10 +104,7 @@ export async function loadProductos() {
                     await deleteProducto(parseInt(id));
                     mostrarNotificacion('✅ Producto eliminado');
                     await cargarProductos();
-                    loadProductos(); // recargar la tabla
-                    // También actualizar dashboard si es necesario
-                    const { loadDashboard } = await import('./dashboard.js');
-                    loadDashboard();
+                    loadProductos();
                 } catch (error) {
                     mostrarNotificacion('❌ Error al eliminar', 'error');
                 }
@@ -112,7 +114,7 @@ export async function loadProductos() {
 }
 
 // ============================================
-// FORMULARIO DE PRODUCTO (CREAR/EDITAR)
+// FORMULARIO DE PRODUCTO (con nuevos campos)
 // ============================================
 export async function mostrarFormularioProducto(producto = null) {
     cerrarTodosLosModales();
@@ -121,6 +123,19 @@ export async function mostrarFormularioProducto(producto = null) {
     const categoriasOptions = categorias.map(c => 
         `<option value="${c.id}" ${producto?.categoria_id == c.id ? 'selected' : ''}>
             ${c.icono || '📦'} ${c.nombre}
+        </option>`
+    ).join('');
+    
+    // Obtener proveedores para el select
+    let proveedores = [];
+    try {
+        proveedores = await getProveedores();
+    } catch (error) {
+        console.error('Error cargando proveedores:', error);
+    }
+    const proveedoresOptions = proveedores.map(p => 
+        `<option value="${p.id}" ${producto?.proveedor_id == p.id ? 'selected' : ''}>
+            ${p.nombre_empresa}
         </option>`
     ).join('');
     
@@ -137,6 +152,27 @@ export async function mostrarFormularioProducto(producto = null) {
                 <option value="">-- Seleccionar --</option>
                 ${categoriasOptions}
             </select>
+        </div>
+        
+        <div class="form-group">
+            <label>Marca</label>
+            <input type="text" id="producto-marca" value="${producto?.marca || ''}" 
+                   class="form-control" placeholder="Ej: Polar">
+        </div>
+        
+        <div class="form-group">
+            <label>Proveedor (opcional)</label>
+            <select id="producto-proveedor" class="form-control">
+                <option value="">-- Seleccionar proveedor --</option>
+                ${proveedoresOptions}
+            </select>
+            <small><a href="#" id="link-nuevo-proveedor-form">+ Agregar nuevo proveedor</a></small>
+        </div>
+        
+        <div class="form-group">
+            <label>Fecha de vencimiento</label>
+            <input type="date" id="producto-fecha-venc" value="${producto?.fecha_vencimiento || ''}" 
+                   class="form-control">
         </div>
         
         <div class="form-group">
@@ -209,6 +245,15 @@ export async function mostrarFormularioProducto(producto = null) {
     
     const modal = crearModal(isEdit ? '✏️ Editar Producto' : '➕ Nuevo Producto', contenido);
     
+    // Evento para abrir modal de nuevo proveedor (opcional)
+    document.getElementById('link-nuevo-proveedor-form')?.addEventListener('click', async (e) => {
+        e.preventDefault();
+        // Llamamos a la función que crea un proveedor (reutilizamos la misma lógica de compras.js)
+        // Para no duplicar código, puedes mostrar un modal simple similar al de compras.
+        // Por simplicidad, te sugiero que el usuario cree el proveedor desde el módulo de compras.
+        mostrarNotificacion('Puede agregar proveedores desde el módulo de Compras', 'info');
+    });
+    
     // Preview de precio
     const updatePreview = () => {
         if (document.getElementById('producto-tipo').value !== 'auto') return;
@@ -241,13 +286,20 @@ export async function mostrarFormularioProducto(producto = null) {
         
         const tipo = document.getElementById('producto-tipo').value;
         const unidad = document.getElementById('producto-unidad').value;
+        const marca = document.getElementById('producto-marca').value.trim() || null;
+        const proveedor_id = document.getElementById('producto-proveedor').value || null;
+        const fecha_vencimiento = document.getElementById('producto-fecha-venc').value || null;
+        
         const productoData = {
             nombre,
             categoria_id: document.getElementById('producto-categoria').value || null,
             unidad_medida: unidad,
             stock_minimo: parseFloat(document.getElementById('producto-stock-min').value) || 5,
             stock_actual: parseFloat(document.getElementById('producto-stock-actual').value) || 0,
-            usar_calculo_automatico: tipo === 'auto' ? 1 : 0
+            usar_calculo_automatico: tipo === 'auto' ? 1 : 0,
+            marca,
+            proveedor_id: proveedor_id ? parseInt(proveedor_id) : null,
+            fecha_vencimiento
         };
         
         if (tipo === 'auto') {
@@ -280,9 +332,9 @@ export async function mostrarFormularioProducto(producto = null) {
             }
             
             modal.remove();
+            document.body.focus();   
             await cargarProductos();
             
-            // Recargar página actual
             const activePage = document.querySelector('.nav-item.active').getAttribute('data-page');
             if (activePage === 'productos') {
                 loadProductos();
@@ -297,6 +349,5 @@ export async function mostrarFormularioProducto(producto = null) {
         }
     });
     
-    // Inicializar preview
     updatePreview();
 }

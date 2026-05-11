@@ -95,7 +95,11 @@ function crearTablas() {
           stock_minimo REAL DEFAULT 5,
           unidad_medida TEXT DEFAULT 'unidad',
           activo INTEGER DEFAULT 1,
-          FOREIGN KEY (categoria_id) REFERENCES categorias(id)
+          marca TEXT,
+          proveedor_id INTEGER,
+          fecha_vencimiento DATE,
+          FOREIGN KEY (categoria_id) REFERENCES categorias(id),
+          FOREIGN KEY (proveedor_id) REFERENCES proveedores(id)
         )
       `);
 
@@ -382,26 +386,78 @@ ipcMain.handle('get-categorias', async () => {
 });
 
 ipcMain.handle('add-producto', async (event, producto) => {
-  return withDbReady(() => new Promise((resolve, reject) => {
-    const { nombre, precio_base_usd, margen_sugerido, categoria_id, stock_minimo, stock_actual, usar_calculo_automatico, precio_manual_bs, unidad_medida } = producto;
-    if (stock_actual < 0 || stock_minimo < 0 || (precio_base_usd && precio_base_usd < 0) || (precio_manual_bs && precio_manual_bs < 0)) {
-      return reject(new Error('Los valores de stock y precio no pueden ser negativos'));
-    }
-    const sql = `INSERT INTO productos (nombre, precio_base_usd, margen_sugerido, categoria_id, stock_minimo, stock_actual, usar_calculo_automatico, precio_manual_bs, unidad_medida, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`;
-    db.run(sql, [nombre, precio_base_usd, margen_sugerido, categoria_id, stock_minimo, stock_actual, usar_calculo_automatico ? 1 : 0, precio_manual_bs, unidad_medida], function(err) {
-      if (err) reject(err);
-      else resolve({ id: this.lastID, success: true });
-    });
-  }));
-});
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      const { 
+        nombre, 
+        precio_base_usd, 
+        margen_sugerido, 
+        categoria_id, 
+        stock_minimo,
+        stock_actual,
+        usar_calculo_automatico,
+        precio_manual_bs,
+        unidad_medida,
+        marca,                 // ← nuevo
+        proveedor_id,          // ← nuevo
+        fecha_vencimiento      // ← nuevo
+      } = producto;
 
-ipcMain.handle('get-productos', async () => {
-  return withDbReady(() => new Promise((resolve, reject) => {
-    db.all(`SELECT p.*, c.nombre as categoria_nombre, c.icono as categoria_icono FROM productos p LEFT JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY p.nombre`, [], (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
+      if (stock_actual < 0 || stock_minimo < 0 || (precio_base_usd && precio_base_usd < 0) || (precio_manual_bs && precio_manual_bs < 0)) {
+        return reject(new Error('Los valores de stock y precio no pueden ser negativos'));
+      }
+      
+      const sql = `INSERT INTO productos (
+        nombre, precio_base_usd, margen_sugerido, categoria_id, 
+        stock_minimo, stock_actual, usar_calculo_automatico, precio_manual_bs, unidad_medida,
+        marca, proveedor_id, fecha_vencimiento, activo
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`;
+      
+      db.run(sql, 
+        [
+          nombre, 
+          precio_base_usd, 
+          margen_sugerido, 
+          categoria_id, 
+          stock_minimo, 
+          stock_actual, 
+          usar_calculo_automatico ? 1 : 0, 
+          precio_manual_bs, 
+          unidad_medida,
+          marca || null,
+          proveedor_id || null,
+          fecha_vencimiento || null
+        ], 
+        function(err) {
+          if (err) {
+            console.error('❌ Error insertando:', err);
+            reject(err);
+          } else {
+            console.log('✅ Producto insertado ID:', this.lastID, 'Stock:', stock_actual);
+            resolve({ id: this.lastID, success: true });
+          }
+        }
+      );
     });
-  }));
+  });
+});
+ipcMain.handle('get-productos', async () => {
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      db.all(`
+        SELECT p.*, c.nombre as categoria_nombre, c.icono as categoria_icono, 
+               pr.nombre_empresa as nombre_proveedor
+        FROM productos p
+        LEFT JOIN categorias c ON p.categoria_id = c.id
+        LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
+        WHERE p.activo = 1
+        ORDER BY p.nombre
+      `, [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+  });
 });
 
 ipcMain.handle('buscar-productos-fts', async (event, termino) => {
@@ -415,17 +471,70 @@ ipcMain.handle('buscar-productos-fts', async (event, termino) => {
 });
 
 ipcMain.handle('update-producto', async (event, id, producto) => {
-  return withDbReady(() => new Promise((resolve, reject) => {
-    const { nombre, precio_base_usd, margen_sugerido, categoria_id, stock_minimo, stock_actual, usar_calculo_automatico, precio_manual_bs, unidad_medida } = producto;
-    if (stock_actual < 0 || stock_minimo < 0 || (precio_base_usd && precio_base_usd < 0) || (precio_manual_bs && precio_manual_bs < 0)) {
-      return reject(new Error('Los valores de stock y precio no pueden ser negativos'));
-    }
-    const sql = `UPDATE productos SET nombre = COALESCE(?, nombre), precio_base_usd = COALESCE(?, precio_base_usd), margen_sugerido = COALESCE(?, margen_sugerido), categoria_id = COALESCE(?, categoria_id), stock_minimo = COALESCE(?, stock_minimo), stock_actual = COALESCE(?, stock_actual), usar_calculo_automatico = COALESCE(?, usar_calculo_automatico), precio_manual_bs = COALESCE(?, precio_manual_bs), unidad_medida = COALESCE(?, unidad_medida) WHERE id = ?`;
-    db.run(sql, [nombre || null, precio_base_usd || null, margen_sugerido || null, categoria_id || null, stock_minimo !== undefined ? stock_minimo : null, stock_actual !== undefined ? stock_actual : null, usar_calculo_automatico !== undefined ? usar_calculo_automatico : null, precio_manual_bs || null, unidad_medida || null, id], function(err) {
-      if (err) reject(err);
-      else resolve({ success: true, changes: this.changes });
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      const { 
+        nombre, 
+        precio_base_usd, 
+        margen_sugerido, 
+        categoria_id, 
+        stock_minimo,
+        stock_actual,
+        usar_calculo_automatico,
+        precio_manual_bs,
+        unidad_medida,
+        marca,                 // ← nuevo
+        proveedor_id,          // ← nuevo
+        fecha_vencimiento      // ← nuevo
+      } = producto;
+
+      if (stock_actual < 0 || stock_minimo < 0 || (precio_base_usd && precio_base_usd < 0) || (precio_manual_bs && precio_manual_bs < 0)) {
+        return reject(new Error('Los valores de stock y precio no pueden ser negativos'));
+      }
+      
+      const sql = `UPDATE productos SET 
+        nombre = COALESCE(?, nombre),
+        precio_base_usd = COALESCE(?, precio_base_usd),
+        margen_sugerido = COALESCE(?, margen_sugerido),
+        categoria_id = COALESCE(?, categoria_id),
+        stock_minimo = COALESCE(?, stock_minimo),
+        stock_actual = COALESCE(?, stock_actual),
+        usar_calculo_automatico = COALESCE(?, usar_calculo_automatico),
+        precio_manual_bs = COALESCE(?, precio_manual_bs),
+        unidad_medida = COALESCE(?, unidad_medida),
+        marca = COALESCE(?, marca),
+        proveedor_id = COALESCE(?, proveedor_id),
+        fecha_vencimiento = COALESCE(?, fecha_vencimiento)
+        WHERE id = ?`;
+      
+      db.run(sql, 
+        [
+          nombre || null,
+          precio_base_usd || null,
+          margen_sugerido || null,
+          categoria_id || null,
+          stock_minimo !== undefined ? stock_minimo : null,
+          stock_actual !== undefined ? stock_actual : null,
+          usar_calculo_automatico !== undefined ? usar_calculo_automatico : null,
+          precio_manual_bs || null,
+          unidad_medida || null,
+          marca || null,
+          proveedor_id !== undefined && proveedor_id !== null ? proveedor_id : null,
+          fecha_vencimiento || null,
+          id
+        ], 
+        function(err) {
+          if (err) {
+            console.error('❌ Error SQL en update-producto:', err);
+            reject(err);
+          } else {
+            console.log('✅ Producto actualizado ID:', id, 'Stock:', stock_actual);
+            resolve({ success: true, changes: this.changes });
+          }
+        }
+      );
     });
-  }));
+  });
 });
 
 ipcMain.handle('delete-producto', async (event, id) => {
@@ -436,6 +545,23 @@ ipcMain.handle('delete-producto', async (event, id) => {
     });
   }));
 });
+
+ipcMain.handle('get-productos-stock-bajo', async () => {
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      db.all(`
+        SELECT id, nombre, stock_actual, stock_minimo, unidad_medida
+        FROM productos
+        WHERE activo = 1 AND stock_actual <= stock_minimo
+        ORDER BY (stock_actual / stock_minimo) ASC
+      `, [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+  });
+});
+
 
 // ============================================
 // MANEJADORES IPC - VENTAS

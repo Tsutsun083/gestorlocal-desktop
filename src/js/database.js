@@ -1,6 +1,13 @@
 // database.js - Comunicación con el backend (electronAPI)
 
 // ============================================
+// DASHBOARD
+// ============================================
+export async function getProductosStockBajo() {
+    return await window.electronAPI.getProductosStockBajo();
+}
+
+// ============================================
 // CONFIGURACIÓN
 // ============================================
 export async function initDatabase() {

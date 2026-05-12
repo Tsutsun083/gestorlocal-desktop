@@ -45,8 +45,29 @@ function initDatabase() {
 function crearTablas() {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
-      // Categorías
-      db.run(`
+
+      //Creamos la tabla de usuarios
+      db.run(`CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE,
+        password TEXT,
+        rol TEXT
+    )`, (err) => {
+        if (err) return reject(err);
+
+        // Una vez creada, verificamos si está vacía para meter los usuarios iniciales
+        db.get("SELECT COUNT(*) as count FROM usuarios", (err, row) => {
+          if (row && row.count === 0) {
+              const stmt = db.prepare("INSERT INTO usuarios (username, password, rol) VALUES (?, ?, ?)");
+              stmt.run("admin", "admin123", "admin"); // El jefe
+              stmt.run("vendedor", "ventas123", "vendedor"); // El trabajador
+              stmt.finalize();
+              console.log("✅ Usuarios iniciales creados: admin/admin123 y vendedor/ventas123");
+          }
+      });
+    });
+    // Categorías
+    db.run(`
         CREATE TABLE IF NOT EXISTS categorias (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           nombre TEXT NOT NULL UNIQUE,
@@ -734,4 +755,21 @@ ipcMain.handle('asignar-deuda', async (event, data) => {
       else resolve({ success: true });
     });
   });
+});
+// ============================================
+// MANEJADORES IPC - LOGIN
+// ============================================
+ipcMain.handle('validar-login', async (event, { user, pass }) => {
+    return new Promise((resolve) => {
+        db.get("SELECT id, username, rol FROM usuarios WHERE username = ? AND password = ?", 
+        [user, pass], (err, row) => {
+            if (err) {
+                resolve({ success: false, message: "Error en la base de datos" });
+            } else if (row) {
+                resolve({ success: true, usuario: row });
+            } else {
+                resolve({ success: false, message: "Usuario o clave incorrectos" });
+            }
+        });
+    });
 });

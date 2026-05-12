@@ -43,4 +43,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     addCliente: (cliente) => ipcRenderer.invoke('add-cliente', cliente),
     asignarDeuda: (data) => ipcRenderer.invoke('asignar-deuda', data),
     abonarDeudaCliente: (datos) => ipcRenderer.invoke('abonar-deuda', datos),
+
+    // Usuarios
+    validarLogin: (datos) => ipcRenderer.invoke('validar-login', datos),
 });

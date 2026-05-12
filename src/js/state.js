@@ -58,3 +58,16 @@ export let clienteSeleccionado = null;
 export function setClienteSeleccionado(cliente) {
     clienteSeleccionado = cliente;
 }
+// Usuario actual 
+export let usuarioActual = null; 
+
+// Función para actualizar el usuario actual (puede ser útil para mostrar su nombre en la UI, o para registrar quién hizo cada venta)
+export function setUsuarioActual(user) {
+    usuarioActual = user;
+    // Si queréis, podéis guardar el nombre en el localStorage pa' que no se borre al reiniciar
+    if(user) {
+        localStorage.setItem('ultimoUsuario', user.username);
+    } else {
+        localStorage.removeItem('ultimoUsuario');
+    }
+}

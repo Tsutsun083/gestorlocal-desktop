@@ -118,6 +118,37 @@ function crearTablas() {
           fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
         )
       `);
+      // Agregar columna tipo_ingreso si no existe (por si acaso)
+      db.all("PRAGMA table_info(venta_detalles)", (err, columns) => {
+        if (!err && columns) {
+          const columnNames = columns.map(c => c.name);
+          if (!columnNames.includes('tipo_ingreso')) {
+            db.run("ALTER TABLE venta_detalles ADD COLUMN tipo_ingreso TEXT");
+            console.log('✅ Columna tipo_ingreso agregada a venta_detalles');
+          }
+        }
+      });
+      // Tabla de clientes
+      db.run(`
+         CREATE TABLE IF NOT EXISTS clientes (
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nombre TEXT NOT NULL,
+          ci TEXT UNIQUE,
+          telefono TEXT,
+          fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+          deuda REAL DEFAULT 0
+         )
+      `);
+        // Agregar columna cliente_id a ventas si no existe
+      db.all("PRAGMA table_info(ventas)", (err, columns) => {
+        if (!err && columns) {
+          const hasClienteId = columns.some(c => c.name === 'cliente_id');
+        if (!hasClienteId) {
+          db.run("ALTER TABLE ventas ADD COLUMN cliente_id INTEGER REFERENCES clientes(id)");
+          console.log('✅ Columna cliente_id agregada a la tabla ventas');
+          }
+        }
+      });
 
       // Órdenes de compra
       db.run(`
@@ -632,4 +663,75 @@ app.on('before-quit', () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+// ============================================
+// CLIENTES Y CUENTAS POR COBRAR
+// ============================================
+
+ipcMain.handle('get-clientes', async () => {
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      db.all("SELECT * FROM clientes ORDER BY nombre", [], (err, rows) => {
+        if (err) reject(err); else resolve(rows || []);
+      });
+    });
+  });
+});
+
+ipcMain.handle('add-cliente', async (event, cliente) => {
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      const sql = `INSERT INTO clientes (nombre, ci, telefono) VALUES (?, ?, ?)`;
+      db.run(sql, [cliente.nombre, cliente.ci, cliente.telefono], function(err) {
+        if (err) reject(err); else resolve({ success: true, id: this.lastID });
+      });
+    });
+  });
+});
+
+// ESTA ES LA JOYA DE LA CORONA: El Abono
+ipcMain.handle('abonar-deuda', async (event, data) => {
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      const { clienteId, monto, metodoPago } = data;
+      
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+
+        // 1. Le bajamos la cuenta al cliente
+        db.run(`UPDATE clientes SET deuda = deuda - ? WHERE id = ?`, [monto, clienteId], (err) => {
+            if (err) { db.run('ROLLBACK'); return reject(err); }
+        });
+
+        // 2. Registramos la entrada de dinero en la tabla de ventas pa' los reportes
+        // Le ponemos subtotal 0, pero total = monto para que no descuadre inventario
+        db.run(
+          `INSERT INTO ventas (fecha, total, metodo_pago, subtotal, descuento, cliente_id) 
+           VALUES (datetime('now', 'localtime'), ?, ?, 0, 0, ?)`,
+          [monto, metodoPago, clienteId],
+          function(err) {
+            if (err) {
+                db.run('ROLLBACK'); 
+                return reject(err);
+            }
+            
+            // Listo, sellado y guardado
+            db.run('COMMIT');
+            resolve({ success: true, ventaId: this.lastID });
+          }
+        );
+      });
+    });
+  });
+});
+
+ipcMain.handle('asignar-deuda', async (event, data) => {
+  return new Promise((resolve, reject) => {
+    const { clienteId, monto } = data;    
+    db.run(`UPDATE clientes SET deuda = deuda + ? WHERE id = ?`, [monto, clienteId], (err) => {
+      if (err) reject(err);
+      else resolve({ success: true });
+    });
+  });
 });

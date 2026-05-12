@@ -2,8 +2,7 @@
 
 import { configuracion, setConfiguracion } from './state.js';
 import { updateTasaBCV } from './database.js';
-import { loadDashboard } from './dashboard.js';
-import { loadProductos } from './productos.js';
+
 
 // ============================================
 // MODALES
@@ -128,11 +127,13 @@ export function mostrarModalTasa() {
         document.body.removeChild(modal);
         
         const activePage = document.querySelector('.nav-item.active')?.getAttribute('data-page');
-        if (activePage === 'dashboard') {
-            await loadDashboard();
-        } else if (activePage === 'productos') {
-            await loadProductos();
-        }
+    if (activePage === 'dashboard') {
+        const { loadDashboard } = await import('./dashboard.js');
+        await loadDashboard();
+      } else if (activePage === 'productos') {
+        const { loadProductos } = await import('./productos.js');
+        await loadProductos();
+            }
     });
     
     modal.addEventListener('keydown', (e) => {

@@ -37,4 +37,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // REPORTES
     getHistorialVentas: () => ipcRenderer.invoke('get-historial-ventas'),
     getTotalesReportes: () => ipcRenderer.invoke('get-totales-reportes'),
+    
+    // Clientes
+    getClientes: () => ipcRenderer.invoke('get-clientes'),
+    addCliente: (cliente) => ipcRenderer.invoke('add-cliente', cliente),
+    asignarDeuda: (data) => ipcRenderer.invoke('asignar-deuda', data),
+    abonarDeudaCliente: (datos) => ipcRenderer.invoke('abonar-deuda', datos),
 });

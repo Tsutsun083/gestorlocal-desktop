@@ -9,7 +9,9 @@ export async function cargarDatosIniciales() {
         if (config) {
             setConfiguracion({
                 tasa_bcv: config.tasa_bcv_actual || 50.00,
-                nombre_negocio: config.nombre_negocio || 'Mi Negocio'
+                nombre_negocio: config.nombre_negocio || 'Mi Negocio',
+                tema: config.tema || 'claro',
+                color_primario: config.color_primario || '#2563eb'
             });
         }
         
@@ -105,7 +107,12 @@ async function insertarProductosDemo() {
 
 // Datos de demostración (fallback)
 function cargarDatosDemo() {
-    setConfiguracion({ tasa_bcv: 50.20, nombre_negocio: 'Panadería Demo' });
+    setConfiguracion({ 
+        tasa_bcv: 50.20, 
+        nombre_negocio: 'Panadería Demo',
+        tema: 'claro',
+        color_primario: '#2563eb'
+    });
     setCategorias([
         { id: 1, nombre: 'Panadería', icono: '🍞' },
         { id: 2, nombre: 'Bebidas', icono: '🥤' },
@@ -119,5 +126,4 @@ function cargarDatosDemo() {
         { id: 3, nombre: 'Leche', precio_base_usd: 3.50, margen_sugerido: 20,
           stock_actual: 8, stock_minimo: 5, categoria_nombre: 'Lácteos', usar_calculo_automatico: 1 }
     ]);
-    // loadDashboard se llamará después desde main.renderer
 }

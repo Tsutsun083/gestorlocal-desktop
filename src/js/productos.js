@@ -1,34 +1,54 @@
 // productos.js - Funciones para la gestión de productos
 
 import { productos, categorias, configuracion, setProductos, calcularPrecioBs } from './state.js';
-import { getProductos, addProducto, updateProducto, deleteProducto, getProveedores } from './database.js';
+import { getProductos, addProducto, buscarProductosFiltros, updateProducto, deleteProducto, getProveedores } from './database.js';
 import { crearModal, cerrarTodosLosModales, mostrarNotificacion } from './ui.js';
 
 // ============================================
 // CARGA INICIAL
 // ============================================
-export async function cargarProductos() {
-    const prods = await getProductos();
-    setProductos(prods || []);
-}
-
-// ============================================
-// PÁGINA DE PRODUCTOS (con nuevas columnas)
-// ============================================
 export async function loadProductos() {
     const content = document.getElementById('page-content');
     if (!content) return;
-    
-    await cargarProductos();
-    
+
+    let paginaActual = 1;
+    const POR_PAGINA = 30;
+    let filtrosActuales = {};
+
+
+
+    // HTML con filtros y tabla
     content.innerHTML = `
-        <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
             <h2>Gestión de Productos</h2>
-            <button class="btn btn-primary" id="btn-nuevo-producto">
-                <i class="fas fa-plus"></i> Nuevo Producto
-            </button>
+            <button class="btn btn-primary" id="btn-nuevo-producto">➕ Nuevo Producto</button>
+            <div id="paginador-productos" style="margin-top: 20px; text-align: center;"></div>
         </div>
-        
+
+        <!-- Filtros de búsqueda -->
+        <div class="filtros-productos" style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                <input type="text" id="filtro-nombre" class="form-control" placeholder="Nombre">
+                <select id="filtro-categoria" class="form-control">
+                    <option value="">Todas las categorías</option>
+                    ${categorias.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+                </select>
+                <input type="text" id="filtro-marca" class="form-control" placeholder="Marca">
+                <select id="filtro-proveedor" class="form-control">
+                    <option value="">Todos los proveedores</option>
+                    ${await cargarOpcionesProveedores()}
+                </select>
+                <div style="display: flex; gap: 5px;">
+                    <input type="number" id="filtro-precio-min" class="form-control" placeholder="Precio min (Bs)" step="1">
+                    <input type="number" id="filtro-precio-max" class="form-control" placeholder="Precio max (Bs)" step="1">
+                </div>
+            </div>
+            <div style="margin-top: 10px; display: flex; gap: 10px;">
+                <button class="btn btn-primary" id="btn-buscar-productos">🔍 Buscar</button>
+                <button class="btn btn-secondary" id="btn-limpiar-filtros">🗑️ Limpiar</button>
+            </div>
+        </div>
+
         <div class="productos-table-container">
             <table class="productos-table">
                 <thead>
@@ -45,72 +65,151 @@ export async function loadProductos() {
                         <th>Acciones</th>
                     </tr>
                 </thead>
-                <tbody>
-                    ${productos.map(p => {
-                        const stockActual = p.stock_actual || 0;
-                        const stockMinimo = p.stock_minimo || 5;
-                        const stockBajo = stockActual <= stockMinimo;
-                        return `
-                        <tr data-id="${p.id}">
-                            <td>${p.nombre}</td>
-                            <td>${p.categoria_nombre || 'Sin categoría'}</td>
-                            <td>${p.marca || '-'}</td>
-                            <td>${p.nombre_proveedor || '-'}</td>
-                            <td>${p.fecha_vencimiento ? new Date(p.fecha_vencimiento).toLocaleDateString() : '-'}</td>
-                            <td class="text-right font-bold">${calcularPrecioBs(p).toLocaleString()} Bs</td>
-                            <td class="text-center">
-                                <span class="stock-badge ${stockBajo ? 'stock-bajo' : 'stock-normal'}">
-                                    ${stockActual.toFixed(2)}
-                                </span>
-                            </td>
-                            <td class="text-center">${stockMinimo}</td>
-                            <td class="text-center">
-                                ${stockActual === 0 ? '🔴 Sin stock' : 
-                                  stockBajo ? '🟡 Stock bajo' : '🟢 Normal'}
-                            </td>
-                            <td class="text-center">
-                                <button class="btn-icon btn-edit" data-id="${p.id}" title="Editar">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                <button class="btn-icon btn-delete" data-id="${p.id}" title="Eliminar">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    `}).join('')}
+                <tbody id="productos-tbody">
+                    <tr><td colspan="10">Cargando productos...</td></tr>
                 </tbody>
             </table>
         </div>
     `;
-    
-    document.getElementById('btn-nuevo-producto').addEventListener('click', () => mostrarFormularioProducto());
-    
+
+    // Función auxiliar para cargar opciones de proveedores
+    async function cargarOpcionesProveedores() {
+        try {
+            const proveedores = await getProveedores();
+            return proveedores.map(p => `<option value="${p.id}">${p.nombre_empresa}</option>`).join('');
+        } catch { return ''; }
+    }
+
+    // Función para cargar productos con filtros
+    async function cargarProductosFiltrados(pagina = 1) {
+    paginaActual = pagina;
+    const minValue = document.getElementById('filtro-precio-min').value;
+    const maxValue = document.getElementById('filtro-precio-max').value;
+
+    filtrosActuales = {
+        nombre: document.getElementById('filtro-nombre').value,
+        categoria_id: document.getElementById('filtro-categoria').value,
+        marca: document.getElementById('filtro-marca').value,
+        proveedor_id: document.getElementById('filtro-proveedor').value,
+        precio_min_bs: minValue === '' ? undefined : parseFloat(minValue),
+        precio_max_bs: maxValue === '' ? undefined : parseFloat(maxValue),
+        limit: POR_PAGINA,
+        offset: (pagina - 1) * POR_PAGINA
+    };
+
+    const resultado = await buscarProductosFiltros(filtrosActuales);
+    const productos = resultado.productos;
+    const total = resultado.total;
+
+    const tbody = document.getElementById('productos-tbody');
+    if (!productos || productos.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10">No se encontraron productos</td></tr>';
+        document.getElementById('paginador-productos').innerHTML = '';
+        return;
+    }
+
+    // Renderizar tabla (igual que antes)
+    tbody.innerHTML = productos.map(p => {
+        const stockActual = p.stock_actual || 0;
+        const stockMinimo = p.stock_minimo || 5;
+        const stockBajo = stockActual <= stockMinimo;
+        const precioBs = calcularPrecioBs(p);
+        return `
+        <tr data-id="${p.id}">
+            <td>${p.nombre}</td>
+            <td>${p.categoria_nombre || 'Sin categoría'}</td>
+            <td>${p.marca || '-'}</td>
+            <td>${p.nombre_proveedor || '-'}</td>
+            <td>${p.fecha_vencimiento ? new Date(p.fecha_vencimiento).toLocaleDateString() : '-'}</td>
+            <td class="text-right">${precioBs.toLocaleString()} Bs</td>
+            <td class="text-center">
+                <span class="stock-badge ${stockBajo ? 'stock-bajo' : 'stock-normal'}">${stockActual.toFixed(2)}</span>
+            </td>
+            <td class="text-center">${stockMinimo}</td>
+            <td class="text-center">
+                ${stockActual === 0 ? '🔴 Sin stock' : (stockBajo ? '🟡 Stock bajo' : '🟢 Normal')}
+            </td>
+            <td class="text-center">
+                <button class="btn-icon btn-edit" data-id="${p.id}"><i class="fas fa-edit"></i></button>
+                <button class="btn-icon btn-delete" data-id="${p.id}"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    // Reasignar eventos de edición/eliminación (igual que antes)
     document.querySelectorAll('.btn-edit').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            e.stopPropagation();
             const id = btn.getAttribute('data-id');
             const producto = productos.find(p => p.id == id);
             if (producto) mostrarFormularioProducto(producto);
         });
     });
-    
     document.querySelectorAll('.btn-delete').forEach(btn => {
         btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
             const id = btn.getAttribute('data-id');
-            const producto = productos.find(p => p.id == id);
-            if (confirm(`¿Eliminar "${producto.nombre}"?`)) {
-                try {
-                    await deleteProducto(parseInt(id));
-                    mostrarNotificacion('✅ Producto eliminado');
-                    await cargarProductos();
-                    loadProductos();
-                } catch (error) {
-                    mostrarNotificacion('❌ Error al eliminar', 'error');
-                }
+            if (confirm('¿Eliminar producto?')) {
+                await deleteProducto(parseInt(id));
+                mostrarNotificacion('Producto eliminado');
+                cargarProductosFiltrados(paginaActual);
             }
         });
     });
+
+    // Renderizar paginación
+    const totalPaginas = Math.ceil(total / POR_PAGINA);
+    const paginadorDiv = document.getElementById('paginador-productos');
+    if (!paginadorDiv) return;
+    if (totalPaginas <= 1) {
+        paginadorDiv.innerHTML = '';
+        return;
+    }
+    let paginadorHtml = `<div class="pagination">`;
+    // Botón anterior
+    if (paginaActual > 1) {
+        paginadorHtml += `<button class="btn-pagina" data-pagina="${paginaActual - 1}">« Anterior</button>`;
+    }
+    // Números de página (mostrar máximo 5)
+    let inicio = Math.max(1, paginaActual - 2);
+    let fin = Math.min(totalPaginas, inicio + 4);
+    if (fin - inicio < 4 && inicio > 1) inicio = Math.max(1, fin - 4);
+    for (let i = inicio; i <= fin; i++) {
+        paginadorHtml += `<button class="btn-pagina ${i === paginaActual ? 'active' : ''}" data-pagina="${i}">${i}</button>`;
+    }
+    // Botón siguiente
+    if (paginaActual < totalPaginas) {
+        paginadorHtml += `<button class="btn-pagina" data-pagina="${paginaActual + 1}">Siguiente »</button>`;
+    }
+    paginadorHtml += `</div>`;
+    paginadorDiv.innerHTML = paginadorHtml;
+
+    // Agregar eventos a los botones de página
+    document.querySelectorAll('.btn-pagina').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const pagina = parseInt(btn.dataset.pagina);
+            if (!isNaN(pagina)) cargarProductosFiltrados(pagina);
+        });
+    });
+}
+
+    // Eventos
+    document.getElementById('btn-buscar-productos').addEventListener('click', () => cargarProductosFiltrados(1));
+    document.getElementById('btn-limpiar-filtros').addEventListener('click', () => {
+        document.getElementById('filtro-nombre').value = '';
+        document.getElementById('filtro-categoria').value = '';
+        document.getElementById('filtro-marca').value = '';
+        document.getElementById('filtro-proveedor').value = '';
+        document.getElementById('filtro-precio-min').value = '';
+        document.getElementById('filtro-precio-max').value = '';
+        cargarProductosFiltrados(1);
+    });
+    document.getElementById('btn-nuevo-producto').addEventListener('click', () => mostrarFormularioProducto());
+
+
+    const resultado = await buscarProductosFiltros(filtrosActuales);
+console.log('Resultado del backend:', resultado);
+
+    // Carga inicial
+    await cargarProductosFiltrados(1);
 }
 
 // ============================================
@@ -333,7 +432,7 @@ export async function mostrarFormularioProducto(producto = null) {
             
             modal.remove();
             document.body.focus();   
-            await cargarProductos();
+            //await cargarProductos();
             
             const activePage = document.querySelector('.nav-item.active').getAttribute('data-page');
             if (activePage === 'productos') {

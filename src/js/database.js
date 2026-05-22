@@ -22,6 +22,14 @@ export async function updateTasaBCV(tasa) {
     return await window.electronAPI.updateTasaBCV(tasa);
 }
 
+export async function updateConfig(datos) {
+    return await window.electronAPI.updateConfig(datos);
+}
+
+export async function getVersions() {
+    return await window.electronAPI.getVersions();
+}
+
 // ============================================
 // CATEGORÍAS
 // ============================================
@@ -46,6 +54,10 @@ export async function updateProducto(id, productoData) {
 
 export async function deleteProducto(id) {
     return await window.electronAPI.deleteProducto(id);
+}
+
+export async function buscarProductosFiltros(filtros) {
+    return await window.electronAPI.buscarProductosFiltros(filtros);
 }
 
 // ============================================

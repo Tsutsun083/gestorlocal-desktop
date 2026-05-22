@@ -25,10 +25,11 @@ export function loadVentas() {
 
     content.innerHTML = `
     <div class="ventas-container">
-    <div style="background: #f1f5f9; padding: 10px; margin-bottom: 15px; border-radius: 8px; display: flex; align-items: center; gap: 15px;">
+    <div style="background: var(--surface-color, #f1f5f9); padding: 10px; margin-bottom: 15px; border-radius: 8px; display: flex; align-items: center; gap: 15px;">
         <button id="btn-seleccionar-cliente" class="btn btn-secondary">👤 Asignar Cliente</button>
         <span style="font-size: 1.1rem;">Cliente actual: <strong id="label-cliente-venta">Ninguno (Obligatorio)</strong></span>
     </div>
+</div>
     
     <div class="ventas-grid">
         <div class="ventas-container">
@@ -117,39 +118,34 @@ function setupBuscadorVentas() {
 
 async function buscarProductosVenta(termino) {
     const resultadosDiv = document.getElementById('resultados-busqueda');
+    if (!termino || termino.trim().length < 2) {
+        resultadosDiv.innerHTML = '<div class="loading-message">Escribe al menos 2 caracteres...</div>';
+        return;
+    }
     resultadosDiv.innerHTML = '<div class="loading-message">Buscando...</div>';
-    
     try {
-        // Usar productos del state (ya cargados)
-        const resultados = productos.filter(p => 
-            p.nombre.toLowerCase().includes(termino.toLowerCase()) &&
-            p.activo !== 0
-        );
-        
+        // Llamada al backend FTS5
+        const resultados = await window.electronAPI.buscarProductosFTS(termino);
         if (resultados.length === 0) {
             resultadosDiv.innerHTML = '<div class="loading-message">No se encontraron productos</div>';
             return;
         }
-        
+        // Generar HTML (similar al actual, pero con datos del backend)
         resultadosDiv.innerHTML = resultados.map(p => {
             const precioBs = calcularPrecioBs(p);
-            const stockActual = p.stock_actual || 0;
-            const stockClass = stockActual <= (p.stock_minimo || 5) ? 'stock-bajo' : 'stock-normal';
-            
+            const stockClass = (p.stock_actual || 0) <= (p.stock_minimo || 5) ? 'stock-bajo' : 'stock-normal';
             return `
-                <div class="producto-venta-card" data-id="${p.id}" 
-                     onclick="window.seleccionarProductoVenta(${p.id})">
+                <div class="producto-venta-card" onclick="window.seleccionarProductoVenta(${p.id})">
                     <div class="producto-nombre">${p.nombre}</div>
                     <div class="producto-precio">${precioBs.toLocaleString()} Bs</div>
                     <div class="producto-stock ${stockClass}">
-                        Stock: ${stockActual.toFixed(2)} ${p.unidad_medida}
+                        Stock: ${p.stock_actual?.toFixed(2) || 0} ${p.unidad_medida}
                     </div>
                 </div>
             `;
         }).join('');
-        
     } catch (error) {
-        console.error('Error buscando productos:', error);
+        console.error('Error en búsqueda FTS5:', error);
         resultadosDiv.innerHTML = '<div class="error-message">Error al buscar productos</div>';
     }
 }

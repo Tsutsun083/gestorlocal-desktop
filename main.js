@@ -686,13 +686,30 @@ ipcMain.handle('get-productos', async () => {
 });
 
 ipcMain.handle('buscar-productos-fts', async (event, termino) => {
-  return withDbReady(() => new Promise((resolve, reject) => {
-    const query = `SELECT p.*, c.nombre as categoria_nombre, c.icono as categoria_icono FROM productos p JOIN (SELECT rowid FROM productos_fts WHERE productos_fts MATCH ?) AS fts ON p.id = fts.rowid WHERE p.activo = 1 ORDER BY p.nombre`;
-    db.all(query, [termino], (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      const query = `
+        SELECT p.*, 
+               c.nombre as categoria_nombre, 
+               c.icono as categoria_icono,
+               pr.nombre_empresa as nombre_proveedor
+        FROM productos p
+        JOIN (
+          SELECT rowid 
+          FROM productos_fts 
+          WHERE productos_fts MATCH ?
+        ) AS fts ON p.id = fts.rowid
+        LEFT JOIN categorias c ON p.categoria_id = c.id
+        LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
+        WHERE p.activo = 1
+        ORDER BY p.nombre
+      `;
+      db.all(query, [termino], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
     });
-  }));
+  });
 });
 
 ipcMain.handle('buscar-productos-filtros', async (event, filtros) => {

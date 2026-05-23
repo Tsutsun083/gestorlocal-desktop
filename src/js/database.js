@@ -138,3 +138,6 @@ export async function asignarDeuda(data) {
 export async function validarLogin(user, pass) {
     return await window.electronAPI.validarLogin({ user, pass });
 }
+export async function actualizarClave(datos) {
+    return await window.electronAPI.actualizarClave(datos);
+}

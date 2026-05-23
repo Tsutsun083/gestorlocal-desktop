@@ -1,6 +1,4 @@
-// src/js/renderer.js - VERSIÓN FINAL CORREGIDA
-
-// Estado de la aplicación
+import { loadConfiguracion } from './configuracion.js';
 let configuracion = { 
     tasa_bcv: 50.00,
     nombre_negocio: 'Mi Negocio'
@@ -184,6 +182,7 @@ function setupNavigation() {
             if (page === 'dashboard') loadDashboard();
             else if (page === 'productos') loadProductos();
             else if (page === 'ventas') loadVentas();
+            else if (page === 'config') loadConfiguracion();
             else loadPlaceholder(page, titles[page]);
         });
     });

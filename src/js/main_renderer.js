@@ -8,7 +8,7 @@ import { loadCompras } from './compras.js';
 import { loadClientes } from './clientes.js';
 import { setUsuarioActual, usuarioActual } from './state.js';
 import { validarLogin } from './database.js';
-
+import { loadConfiguracion } from './configuracion.js';
 // ============================================
 // INICIALIZACIÓN
 // ============================================
@@ -104,7 +104,7 @@ function mostrarPantallaLogin() {
             const pass = passInput.value.trim();
 
             if (!user || !pass) {
-                return mostrarNotificacion('¡Epa! No dejes los campos vacíos', 'error');
+                return mostrarNotificacion('Por favor, completa todos los campos', 'error');
             }
 
             try {
@@ -113,6 +113,7 @@ function mostrarPantallaLogin() {
                 
                 if (res.success) {
                     setUsuarioActual(res.usuario);
+                    localStorage.setItem('rol', res.usuario.rol);
                     document.getElementById('login-overlay').remove();
                     
                     // ¡Importante para los permisos del vendedor!
@@ -123,13 +124,13 @@ function mostrarPantallaLogin() {
                     if (typeof setupButtons === 'function') setupButtons();
                     if (typeof loadDashboard === 'function') loadDashboard();
                     
-                    mostrarNotificacion(`¡Qué fue, ${res.usuario.username}! Entraste fino.`);
+                    mostrarNotificacion(`¡Bienvenido, ${res.usuario.username}! Entraste sin problemas.`);
                 } else {
-                    mostrarNotificacion('Usuario o clave chimba, revisá bien', 'error');
+                    mostrarNotificacion('Usuario o clave incorrectos', 'error');
                 }
             } catch (error) {
                 console.error(error);
-                mostrarNotificacion('Se escoñetó algo en la conexión', 'error');
+                mostrarNotificacion('Error al intentar iniciar sesión', 'error');
             }
         });
     }
@@ -137,32 +138,27 @@ function mostrarPantallaLogin() {
     // Un toque pa' que arranque con el cursor en el campo de usuario de una vez
     userInput.focus();
 }
+function aplicarPermisos() {
+            const rol = usuarioActual?.rol;
+    
+            if (rol === 'vendedor') {
+             // Seleccionamos los items del menú que el vendedor NO debe ver
+             const prohibidos = [
+                '[data-page="compras"]',
+                '[data-page="reportes"]',
+            ];
 
-async function procesarLogin() {
-    const user = document.getElementById('login-user').value;
-    const pass = document.getElementById('login-pass').value;
-    const errorDiv = document.getElementById('login-error');
+            prohibidos.forEach(selector => {
+            const el = document.querySelector(selector);
+                if (el) el.style.display = 'none'; // ¡Pa' fuera!
+            });
 
-    // Llamamos al Main Process (Paso 1)
-    const res = await validarLogin(user, pass);
-
-    if (res.success) {
-        setUsuarioActual(res.usuario); // Guardamos en el estado global
-        document.getElementById('login-overlay').remove(); // Quitamos el tapao
-        
-        // ¡Ahora sí! Cargamos la app
-        await cargarDatosIniciales();
-        setupNavigation();
-        setupButtons();
-        loadDashboard();
-        
-        mostrarNotificacion(`¡Bienvenido, ${res.usuario.username}!`);
-    } else {
-        errorDiv.textContent = res.message;
-        errorDiv.style.display = 'block';
-    }
+            // Si por casualidad el sistema intenta cargarlo en el dashboard, 
+            // lo mandamos directo a ventas
+            loadVentas(); 
+            document.querySelector('[data-page="ventas"]')?.classList.add('active');
+            }
 }
-
 // ============================================
 // NAVEGACIÓN
 // ============================================
@@ -192,29 +188,7 @@ function setupNavigation() {
                 'config': 'Configuración'
             };
             
-            document.getElementById('page-title').textContent = titles[page];
-            
-            function aplicarPermisos() {
-            const rol = usuarioActual?.rol;
-    
-            if (rol === 'vendedor') {
-             // Seleccionamos los items del menú que el vendedor NO debe ver
-             const prohibidos = [
-                '[data-page="compras"]',
-                '[data-page="reportes"]',
-            ];
-
-            prohibidos.forEach(selector => {
-            const el = document.querySelector(selector);
-                if (el) el.style.display = 'none'; // ¡Pa' fuera!
-            });
-
-            // Si por casualidad el sistema intenta cargarlo en el dashboard, 
-            // lo mandamos directo a ventas
-            loadVentas(); 
-            document.querySelector('[data-page="ventas"]')?.classList.add('active');
-            }
-}  
+            document.getElementById('page-title').textContent = titles[page];  
 
             switch(page) {
                 case 'dashboard':
@@ -234,6 +208,9 @@ function setupNavigation() {
                     break;
                 case 'clientes':
                     loadClientes();
+                    break;
+                case 'config':         
+                    loadConfiguracion();
                     break;
                 default:
                     loadPlaceholder(page, titles[page]);

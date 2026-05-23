@@ -60,7 +60,9 @@ export function loadVentas() {
                         <h4>Método de Pago</h4>
                         <select id="metodo-pago" class="form-control">
                             <option value="efectivo">Efectivo</option>
-                            <option value="transferencia">Transferencia</option>
+                            <option value="pagomovil">Pago Móvil</option>
+                            <option value="tarjeta">Tarjeta</option>
+                            <option value="biopago">Biopago</option>
                             <option value="mixto">Mixto</option>
                         </select>
                     </div>
@@ -373,7 +375,6 @@ function setupFinalizarVenta() {
             
             const resultado = await registrarVenta({
                 items: carritoVentas.map(item => ({
-                    cliente_id: clienteSeleccionado.id,
                     producto_id: item.producto_id,
                     cantidad: item.cantidad,
                     precio_unitario: item.precio_unitario,
@@ -382,7 +383,8 @@ function setupFinalizarVenta() {
                     unidad: item.unidad
                 })),
                 total,
-                metodoPago
+                metodoPago,
+                clienteId: clienteSeleccionado ? clienteSeleccionado.id : null
             });
             
             if (resultado.success) {

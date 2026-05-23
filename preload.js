@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getProductos: () => ipcRenderer.invoke('get-productos'),
     realizarBackup: () => ipcRenderer.invoke('realizar-backup'),
     buscarProductosFTS: (termino) => ipcRenderer.invoke('buscar-productos-fts', termino),
+    getProductosStockBajo: () => ipcRenderer.invoke('get-productos-stock-bajo'),
     
     // CRUD Productos
     addProducto: (producto) => ipcRenderer.invoke('add-producto', producto),
@@ -21,6 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deleteProducto: (id) => ipcRenderer.invoke('delete-producto', id),
     registrarVenta: (ventaData) => ipcRenderer.invoke('registrar-venta', ventaData),
     getVentasDia: () => ipcRenderer.invoke('get-ventas-dia'),
+    buscarProductosFiltros: (filtros) => ipcRenderer.invoke('buscar-productos-filtros', filtros),
 
     // COMPRAS/PROVEEDORES
     getProveedores: () => ipcRenderer.invoke('get-proveedores'),
@@ -50,4 +52,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Exportar PDF
     exportarTodasVentasPDF: () => ipcRenderer.invoke('exportar-todas-ventas-pdf'),
+
+    //Config
+    updateConfig: (datos) => ipcRenderer.invoke('update-config', datos),
+    listarBackups: () => ipcRenderer.invoke('listar-backups'),
+    getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+    restaurarBackup: (ruta) => ipcRenderer.invoke('restaurar-backup', ruta),
+    eliminarBackup: (ruta) => ipcRenderer.invoke('eliminar-backup', ruta),
+    updateConfig: (datos) => ipcRenderer.invoke('update-config', datos),
+    realizarBackup: () => ipcRenderer.invoke('realizar-backup'),
+    getVersions: () => ipcRenderer.invoke('get-versions'),
 });

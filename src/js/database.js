@@ -1,6 +1,13 @@
 // database.js - Comunicación con el backend (electronAPI)
 
 // ============================================
+// DASHBOARD
+// ============================================
+export async function getProductosStockBajo() {
+    return await window.electronAPI.getProductosStockBajo();
+}
+
+// ============================================
 // CONFIGURACIÓN
 // ============================================
 export async function initDatabase() {
@@ -13,6 +20,14 @@ export async function getConfiguracion() {
 
 export async function updateTasaBCV(tasa) {
     return await window.electronAPI.updateTasaBCV(tasa);
+}
+
+export async function updateConfig(datos) {
+    return await window.electronAPI.updateConfig(datos);
+}
+
+export async function getVersions() {
+    return await window.electronAPI.getVersions();
 }
 
 // ============================================
@@ -39,6 +54,10 @@ export async function updateProducto(id, productoData) {
 
 export async function deleteProducto(id) {
     return await window.electronAPI.deleteProducto(id);
+}
+
+export async function buscarProductosFiltros(filtros) {
+    return await window.electronAPI.buscarProductosFiltros(filtros);
 }
 
 // ============================================

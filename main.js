@@ -105,7 +105,11 @@ function crearTablas() {
           stock_minimo REAL DEFAULT 5,
           unidad_medida TEXT DEFAULT 'unidad',
           activo INTEGER DEFAULT 1,
-          FOREIGN KEY (categoria_id) REFERENCES categorias(id)
+          marca TEXT,
+          proveedor_id INTEGER,
+          fecha_vencimiento DATE,
+          FOREIGN KEY (categoria_id) REFERENCES categorias(id),
+          FOREIGN KEY (proveedor_id) REFERENCES proveedores(id)
         )
       `);
 
@@ -209,7 +213,7 @@ function crearTablas() {
         )
       `);
 
-      // Configuración
+            // Tabla de configuración
       db.run(`
         CREATE TABLE IF NOT EXISTS configuracion (
           id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -217,13 +221,49 @@ function crearTablas() {
           tasa_bcv_actual REAL DEFAULT 50.00,
           fecha_actualizacion_tasa DATETIME,
           redondear_precios INTEGER DEFAULT 1,
-          actualizado_en DATETIME DEFAULT CURRENT_TIMESTAMP
+          actualizado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+          rif TEXT,
+          pago_movil_info TEXT,
+          tema TEXT DEFAULT 'claro',
+          color_primario TEXT DEFAULT '#2563eb'
         )
       `, function(err) {
         if (!err) {
+          // Verificar si ya existe una fila; si no, insertar con los valores por defecto
           db.get(`SELECT * FROM configuracion WHERE id = 1`, (err, row) => {
             if (!row) {
-              db.run(`INSERT INTO configuracion (id, nombre_negocio, tasa_bcv_actual) VALUES (1, 'Mi Negocio', 50.00)`);
+              db.run(`
+                INSERT INTO configuracion 
+                (id, nombre_negocio, tasa_bcv_actual, rif, pago_movil_info, tema, color_primario) 
+                VALUES (1, 'Mi Negocio', 50.00, '', '', 'claro', '#2563eb')
+              `, function(err) {
+                if (err) console.error('Error insertando configuración inicial:', err);
+                else console.log('✅ Configuración inicial insertada');
+              });
+            } else {
+              // Si la fila ya existe pero le faltan columnas, agregarlas (seguridad adicional)
+              // (opcional, ya lo harán los ALTER TABLE después)
+            }
+          });
+        }
+      });
+
+      // Después de crear la tabla, asegurar que todas las columnas existan (por si la tabla era antigua)
+      db.all("PRAGMA table_info(configuracion)", (err, columns) => {
+        if (!err && columns) {
+          const columnNames = columns.map(c => c.name);
+          const nuevasColumnas = [
+            { name: 'rif', sql: "ALTER TABLE configuracion ADD COLUMN rif TEXT" },
+            { name: 'pago_movil_info', sql: "ALTER TABLE configuracion ADD COLUMN pago_movil_info TEXT" },
+            { name: 'tema', sql: "ALTER TABLE configuracion ADD COLUMN tema TEXT DEFAULT 'claro'" },
+            { name: 'color_primario', sql: "ALTER TABLE configuracion ADD COLUMN color_primario TEXT DEFAULT '#2563eb'" }
+          ];
+          nuevasColumnas.forEach(col => {
+            if (!columnNames.includes(col.name)) {
+              db.run(col.sql, (err) => {
+                if (err) console.error(`Error agregando columna ${col.name}:`, err);
+                else console.log(`✅ Columna ${col.name} agregada a configuracion`);
+              });
             }
           });
         }
@@ -255,6 +295,179 @@ function crearTablas() {
         INSERT INTO productos_fts (rowid, nombre, descripcion) VALUES (new.id, new.nombre, new.descripcion);
       END;`);
 
+
+      db.run(`
+            CREATE TABLE IF NOT EXISTS logs_auditoria (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              usuario TEXT,
+              fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+              tabla TEXT NOT NULL,
+              registro_id INTEGER NOT NULL,
+              accion TEXT NOT NULL,
+              campo TEXT,
+              nombre_producto TEXT,
+              nombre_cliente TEXT,
+              valor_anterior TEXT,
+              valor_nuevo TEXT
+            )
+          `);
+
+          
+     // Trigger para stock_actual
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_productos_stock_update
+        AFTER UPDATE OF stock_actual ON productos
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
+          VALUES ('sistema', 'productos', NEW.id, 'UPDATE', 'stock_actual', OLD.stock_actual, NEW.stock_actual, NEW.nombre);
+        END
+      `);
+
+      // Trigger para precio_base_usd
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_productos_precio_usd_update
+        AFTER UPDATE OF precio_base_usd ON productos
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
+          VALUES ('sistema', 'productos', NEW.id, 'UPDATE', 'precio_base_usd', OLD.precio_base_usd, NEW.precio_base_usd, NEW.nombre);
+        END
+      `);
+
+      // Trigger para precio_manual_bs
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_productos_precio_bs_update
+        AFTER UPDATE OF precio_manual_bs ON productos
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
+          VALUES ('sistema', 'productos', NEW.id, 'UPDATE', 'precio_manual_bs', OLD.precio_manual_bs, NEW.precio_manual_bs, NEW.nombre);
+        END
+      `);
+
+      // Trigger para activo
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_productos_activo_update
+        AFTER UPDATE OF activo ON productos
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
+          VALUES ('sistema', 'productos', NEW.id, 'UPDATE', 'activo', OLD.activo, NEW.activo, NEW.nombre);
+        END
+      `);
+
+      // Trigger para proveedor_id
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_productos_proveedor_update
+        AFTER UPDATE OF proveedor_id ON productos
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
+          VALUES ('sistema', 'productos', NEW.id, 'UPDATE', 'proveedor_id', OLD.proveedor_id, NEW.proveedor_id, NEW.nombre);
+        END
+      `);
+
+      // Clientes
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_clientes_deuda_update
+        AFTER UPDATE OF deuda ON clientes
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_cliente)
+          VALUES ('sistema', 'clientes', NEW.id, 'UPDATE', 'deuda', OLD.deuda, NEW.deuda, NEW.nombre);
+        END
+      `);
+
+      // Trigger para nombre
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_clientes_nombre_update
+        AFTER UPDATE OF nombre ON clientes
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_cliente)
+          VALUES ('sistema', 'clientes', NEW.id, 'UPDATE', 'nombre', OLD.nombre, NEW.nombre, NEW.nombre);
+        END
+      `);
+
+      // Trigger para ci
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_clientes_ci_update
+        AFTER UPDATE OF ci ON clientes
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_cliente)
+          VALUES ('sistema', 'clientes', NEW.id, 'UPDATE', 'ci', OLD.ci, NEW.ci, NEW.nombre);
+        END
+      `);
+
+      // Trigger para telefono
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_clientes_telefono_update
+        AFTER UPDATE OF telefono ON clientes
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_cliente)
+          VALUES ('sistema', 'clientes', NEW.id, 'UPDATE', 'telefono', OLD.telefono, NEW.telefono, NEW.nombre);
+        END
+      `);
+
+      // Órdenes de compra
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_ordenes_estado_update
+        AFTER UPDATE OF estado ON ordenes_compra
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo)
+          VALUES ('sistema', 'ordenes_compra', NEW.id, 'UPDATE', 'estado', OLD.estado, NEW.estado);
+        END
+      `);
+
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_ordenes_total_update
+        AFTER UPDATE OF total ON ordenes_compra
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo)
+          VALUES ('sistema', 'ordenes_compra', NEW.id, 'UPDATE', 'total', OLD.total, NEW.total);
+        END
+      `);
+
+      // Configuración (tasa BCV)
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_configuracion_tasa_update
+        AFTER UPDATE OF tasa_bcv_actual ON configuracion
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo)
+          VALUES ('sistema', 'configuracion', NEW.id, 'UPDATE', 'tasa_bcv_actual', OLD.tasa_bcv_actual, NEW.tasa_bcv_actual);
+        END
+      `);
+
+      // Usuarios
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_usuarios_insert
+        AFTER INSERT ON usuarios
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_nuevo)
+          VALUES ('sistema', 'usuarios', NEW.id, 'INSERT', 'rol', NEW.rol);
+        END
+      `);
+
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_usuarios_delete
+        AFTER DELETE ON usuarios
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior)
+          VALUES ('sistema', 'usuarios', OLD.id, 'DELETE', 'rol', OLD.rol);
+        END
+      `);
+
+      db.run(`
+        CREATE TRIGGER IF NOT EXISTS tr_usuarios_rol_update
+        AFTER UPDATE OF rol ON usuarios
+        BEGIN
+          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo)
+          VALUES ('sistema', 'usuarios', NEW.id, 'UPDATE', 'rol', OLD.rol, NEW.rol);
+        END
+      `);
+
+      // Limpiar logs de más de 90 días 
+      const fechaLimite = new Date();
+      fechaLimite.setDate(fechaLimite.getDate() - 180);
+      db.run(`DELETE FROM logs_auditoria WHERE fecha < ?`, [fechaLimite.toISOString()], (err) => {
+        if (err) console.error('Error limpiando logs antiguos:', err);
+        else console.log('🗑️ Logs antiguos eliminados (>90 días)');
+      });
+
       // Categorías por defecto
       const categoriasDefault = [
         ['Víveres', '🍚', '#2563eb', 1],
@@ -271,6 +484,22 @@ function crearTablas() {
       const stmt = db.prepare(`INSERT OR IGNORE INTO categorias (nombre, icono, color, orden) VALUES (?, ?, ?, ?)`);
       categoriasDefault.forEach(cat => stmt.run(cat));
       stmt.finalize();
+
+              // Nuevas categorías solicitadas
+        const nuevasCategorias = [
+          ['Hortalizas', '🥬', '#4ade80', 10],
+          ['Tabaco', '🚬', '#f97316', 11],
+          ['Agua y Hielo', '💧', '#38bdf8', 12],
+          ['Helados', '🍦', '#facc15', 13],
+          ['Condimentos', '🧂', '#a855f7', 14],
+          ['Enlatados', '🥫', '#6b7280', 15],
+          ['Ferretería', '🔧', '#fef08a', 16],
+          ['Quincallería', '🔩', '#9ca3af', 17]
+        ];
+
+        const stmtNuevas = db.prepare(`INSERT OR IGNORE INTO categorias (nombre, icono, color, orden) VALUES (?, ?, ?, ?)`);
+        nuevasCategorias.forEach(cat => stmtNuevas.run(cat));
+        stmtNuevas.finalize();
       
       resolve();
     });
@@ -392,50 +621,259 @@ ipcMain.handle('get-categorias', async () => {
 });
 
 ipcMain.handle('add-producto', async (event, producto) => {
-  return withDbReady(() => new Promise((resolve, reject) => {
-    const { nombre, precio_base_usd, margen_sugerido, categoria_id, stock_minimo, stock_actual, usar_calculo_automatico, precio_manual_bs, unidad_medida } = producto;
-    if (stock_actual < 0 || stock_minimo < 0 || (precio_base_usd && precio_base_usd < 0) || (precio_manual_bs && precio_manual_bs < 0)) {
-      return reject(new Error('Los valores de stock y precio no pueden ser negativos'));
-    }
-    const sql = `INSERT INTO productos (nombre, precio_base_usd, margen_sugerido, categoria_id, stock_minimo, stock_actual, usar_calculo_automatico, precio_manual_bs, unidad_medida, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`;
-    db.run(sql, [nombre, precio_base_usd, margen_sugerido, categoria_id, stock_minimo, stock_actual, usar_calculo_automatico ? 1 : 0, precio_manual_bs, unidad_medida], function(err) {
-      if (err) reject(err);
-      else resolve({ id: this.lastID, success: true });
-    });
-  }));
-});
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      const { 
+        nombre, 
+        precio_base_usd, 
+        margen_sugerido, 
+        categoria_id, 
+        stock_minimo,
+        stock_actual,
+        usar_calculo_automatico,
+        precio_manual_bs,
+        unidad_medida,
+        marca,                 // ← nuevo
+        proveedor_id,          // ← nuevo
+        fecha_vencimiento      // ← nuevo
+      } = producto;
 
-ipcMain.handle('get-productos', async () => {
-  return withDbReady(() => new Promise((resolve, reject) => {
-    db.all(`SELECT p.*, c.nombre as categoria_nombre, c.icono as categoria_icono FROM productos p LEFT JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY p.nombre`, [], (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
+      if (stock_actual < 0 || stock_minimo < 0 || (precio_base_usd && precio_base_usd < 0) || (precio_manual_bs && precio_manual_bs < 0)) {
+        return reject(new Error('Los valores de stock y precio no pueden ser negativos'));
+      }
+      
+      const sql = `INSERT INTO productos (
+        nombre, precio_base_usd, margen_sugerido, categoria_id, 
+        stock_minimo, stock_actual, usar_calculo_automatico, precio_manual_bs, unidad_medida,
+        marca, proveedor_id, fecha_vencimiento, activo
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`;
+      
+      db.run(sql, 
+        [
+          nombre, 
+          precio_base_usd, 
+          margen_sugerido, 
+          categoria_id, 
+          stock_minimo, 
+          stock_actual, 
+          usar_calculo_automatico ? 1 : 0, 
+          precio_manual_bs, 
+          unidad_medida,
+          marca || null,
+          proveedor_id || null,
+          fecha_vencimiento || null
+        ], 
+        function(err) {
+          if (err) {
+            console.error('❌ Error insertando:', err);
+            reject(err);
+          } else {
+            console.log('✅ Producto insertado ID:', this.lastID, 'Stock:', stock_actual);
+            resolve({ id: this.lastID, success: true });
+          }
+        }
+      );
     });
-  }));
+  });
+});
+ipcMain.handle('get-productos', async () => {
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      db.all(`
+        SELECT p.*, c.nombre as categoria_nombre, c.icono as categoria_icono, 
+               pr.nombre_empresa as nombre_proveedor
+        FROM productos p
+        LEFT JOIN categorias c ON p.categoria_id = c.id
+        LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
+        WHERE p.activo = 1
+        ORDER BY p.nombre
+      `, [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+  });
 });
 
 ipcMain.handle('buscar-productos-fts', async (event, termino) => {
-  return withDbReady(() => new Promise((resolve, reject) => {
-    const query = `SELECT p.*, c.nombre as categoria_nombre, c.icono as categoria_icono FROM productos p JOIN (SELECT rowid FROM productos_fts WHERE productos_fts MATCH ?) AS fts ON p.id = fts.rowid WHERE p.activo = 1 ORDER BY p.nombre`;
-    db.all(query, [termino], (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      const query = `
+        SELECT p.*, 
+               c.nombre as categoria_nombre, 
+               c.icono as categoria_icono,
+               pr.nombre_empresa as nombre_proveedor
+        FROM productos p
+        JOIN (
+          SELECT rowid 
+          FROM productos_fts 
+          WHERE productos_fts MATCH ?
+        ) AS fts ON p.id = fts.rowid
+        LEFT JOIN categorias c ON p.categoria_id = c.id
+        LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
+        WHERE p.activo = 1
+        ORDER BY p.nombre
+      `;
+      db.all(query, [termino], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
     });
-  }));
+  });
+});
+
+ipcMain.handle('buscar-productos-filtros', async (event, filtros) => {
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      let { nombre, categoria_id, marca, proveedor_id, precio_min_bs, precio_max_bs, limit, offset } = filtros;
+      let condiciones = [];
+      let params = [];
+
+      // Obtener tasa BCV
+      db.get(`SELECT tasa_bcv_actual FROM configuracion WHERE id = 1`, (err, row) => {
+        if (err) return reject(err);
+        const tasa = (row && row.tasa_bcv_actual) || 50.00;
+
+        // Condiciones de búsqueda
+        if (nombre && nombre.trim()) {
+          condiciones.push("p.nombre LIKE ?");
+          params.push(`%${nombre.trim()}%`);
+        }
+        if (categoria_id && categoria_id !== '') {
+          condiciones.push("p.categoria_id = ?");
+          params.push(categoria_id);
+        }
+        if (marca && marca.trim()) {
+          condiciones.push("p.marca LIKE ?");
+          params.push(`%${marca.trim()}%`);
+        }
+        if (proveedor_id && proveedor_id !== '') {
+          condiciones.push("p.proveedor_id = ?");
+          params.push(proveedor_id);
+        }
+
+        // Condiciones de precio (en Bs)
+        let precioCond = "";
+        const min = parseFloat(precio_min_bs);
+        const max = parseFloat(precio_max_bs);
+        if (!isNaN(min)) {
+          precioCond += ` AND (CASE WHEN p.usar_calculo_automatico = 1 THEN ROUND((p.precio_base_usd * (1 + p.margen_sugerido/100)) * ${tasa}, 2) ELSE p.precio_manual_bs END) >= ${min}`;
+        }
+        if (!isNaN(max)) {
+          precioCond += ` AND (CASE WHEN p.usar_calculo_automatico = 1 THEN ROUND((p.precio_base_usd * (1 + p.margen_sugerido/100)) * ${tasa}, 2) ELSE p.precio_manual_bs END) <= ${max}`;
+        }
+
+        // Consulta principal con paginación
+        let sql = `
+          SELECT p.*, c.nombre as categoria_nombre, c.icono as categoria_icono,
+                 pr.nombre_empresa as nombre_proveedor
+          FROM productos p
+          LEFT JOIN categorias c ON p.categoria_id = c.id
+          LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
+          WHERE p.activo = 1
+        `;
+        if (condiciones.length > 0) sql += " AND " + condiciones.join(" AND ");
+        sql += precioCond;
+        sql += " ORDER BY p.nombre";
+
+        // Aplicar LIMIT y OFFSET si se proporcionaron
+        if (limit && !isNaN(parseInt(limit))) {
+          sql += ` LIMIT ${parseInt(limit)}`;
+          if (offset && !isNaN(parseInt(offset))) {
+            sql += ` OFFSET ${parseInt(offset)}`;
+          }
+        }
+
+        // Consulta para contar el total (sin paginación)
+        let countSql = `
+          SELECT COUNT(*) as total
+          FROM productos p
+          WHERE p.activo = 1
+        `;
+        if (condiciones.length > 0) countSql += " AND " + condiciones.join(" AND ");
+        countSql += precioCond;
+
+        // Ejecutar ambas consultas
+        db.all(sql, params, (err, rows) => {
+          if (err) return reject(err);
+          db.get(countSql, params, (errCount, countRow) => {
+            if (errCount) return reject(errCount);
+            resolve({
+              productos: rows,
+              total: countRow ? countRow.total : 0
+            });
+          });
+        });
+      });
+    });
+  });
 });
 
 ipcMain.handle('update-producto', async (event, id, producto) => {
-  return withDbReady(() => new Promise((resolve, reject) => {
-    const { nombre, precio_base_usd, margen_sugerido, categoria_id, stock_minimo, stock_actual, usar_calculo_automatico, precio_manual_bs, unidad_medida } = producto;
-    if (stock_actual < 0 || stock_minimo < 0 || (precio_base_usd && precio_base_usd < 0) || (precio_manual_bs && precio_manual_bs < 0)) {
-      return reject(new Error('Los valores de stock y precio no pueden ser negativos'));
-    }
-    const sql = `UPDATE productos SET nombre = COALESCE(?, nombre), precio_base_usd = COALESCE(?, precio_base_usd), margen_sugerido = COALESCE(?, margen_sugerido), categoria_id = COALESCE(?, categoria_id), stock_minimo = COALESCE(?, stock_minimo), stock_actual = COALESCE(?, stock_actual), usar_calculo_automatico = COALESCE(?, usar_calculo_automatico), precio_manual_bs = COALESCE(?, precio_manual_bs), unidad_medida = COALESCE(?, unidad_medida) WHERE id = ?`;
-    db.run(sql, [nombre || null, precio_base_usd || null, margen_sugerido || null, categoria_id || null, stock_minimo !== undefined ? stock_minimo : null, stock_actual !== undefined ? stock_actual : null, usar_calculo_automatico !== undefined ? usar_calculo_automatico : null, precio_manual_bs || null, unidad_medida || null, id], function(err) {
-      if (err) reject(err);
-      else resolve({ success: true, changes: this.changes });
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      const { 
+        nombre, 
+        precio_base_usd, 
+        margen_sugerido, 
+        categoria_id, 
+        stock_minimo,
+        stock_actual,
+        usar_calculo_automatico,
+        precio_manual_bs,
+        unidad_medida,
+        marca,                 // ← nuevo
+        proveedor_id,          // ← nuevo
+        fecha_vencimiento      // ← nuevo
+      } = producto;
+
+      if (stock_actual < 0 || stock_minimo < 0 || (precio_base_usd && precio_base_usd < 0) || (precio_manual_bs && precio_manual_bs < 0)) {
+        return reject(new Error('Los valores de stock y precio no pueden ser negativos'));
+      }
+      
+      const sql = `UPDATE productos SET 
+        nombre = COALESCE(?, nombre),
+        precio_base_usd = COALESCE(?, precio_base_usd),
+        margen_sugerido = COALESCE(?, margen_sugerido),
+        categoria_id = COALESCE(?, categoria_id),
+        stock_minimo = COALESCE(?, stock_minimo),
+        stock_actual = COALESCE(?, stock_actual),
+        usar_calculo_automatico = COALESCE(?, usar_calculo_automatico),
+        precio_manual_bs = COALESCE(?, precio_manual_bs),
+        unidad_medida = COALESCE(?, unidad_medida),
+        marca = COALESCE(?, marca),
+        proveedor_id = COALESCE(?, proveedor_id),
+        fecha_vencimiento = COALESCE(?, fecha_vencimiento)
+        WHERE id = ?`;
+      
+      db.run(sql, 
+        [
+          nombre || null,
+          precio_base_usd || null,
+          margen_sugerido || null,
+          categoria_id || null,
+          stock_minimo !== undefined ? stock_minimo : null,
+          stock_actual !== undefined ? stock_actual : null,
+          usar_calculo_automatico !== undefined ? usar_calculo_automatico : null,
+          precio_manual_bs || null,
+          unidad_medida || null,
+          marca || null,
+          proveedor_id !== undefined && proveedor_id !== null ? proveedor_id : null,
+          fecha_vencimiento || null,
+          id
+        ], 
+        function(err) {
+          if (err) {
+            console.error('❌ Error SQL en update-producto:', err);
+            reject(err);
+          } else {
+            console.log('✅ Producto actualizado ID:', id, 'Stock:', stock_actual);
+            resolve({ success: true, changes: this.changes });
+          }
+        }
+      );
     });
-  }));
+  });
 });
 
 ipcMain.handle('delete-producto', async (event, id) => {
@@ -446,6 +884,23 @@ ipcMain.handle('delete-producto', async (event, id) => {
     });
   }));
 });
+
+ipcMain.handle('get-productos-stock-bajo', async () => {
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      db.all(`
+        SELECT id, nombre, stock_actual, stock_minimo, unidad_medida
+        FROM productos
+        WHERE activo = 1 AND stock_actual <= stock_minimo
+        ORDER BY (stock_actual / stock_minimo) ASC
+      `, [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+  });
+});
+
 
 // ============================================
 // MANEJADORES IPC - VENTAS
@@ -1062,3 +1517,81 @@ async function verificarYExportarVentas() {
         });
     });
 }
+
+// ============================================
+// MANEJADORES IPC - CONFIGURACION
+// ============================================
+
+ipcMain.handle('update-config', async (event, nuevosDatos) => {
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      const campos = Object.keys(nuevosDatos).map(k => `${k} = ?`).join(', ');
+      const valores = Object.values(nuevosDatos);
+      if (campos.length === 0) return resolve({ success: true });
+      db.run(`UPDATE configuracion SET ${campos} WHERE id = 1`, valores, function(err) {
+        if (err) reject(err);
+        else resolve({ success: true });
+      });
+    });
+  });
+});
+
+// Obtener lista de backups
+ipcMain.handle('listar-backups', async () => {
+    const backupDir = path.join(app.getPath('userData'), 'backups');
+    if (!fs.existsSync(backupDir)) return [];
+    const archivos = fs.readdirSync(backupDir);
+    return archivos
+        .filter(f => f.startsWith('gestorlocal_') && f.endsWith('.db'))
+        .map(f => {
+            const ruta = path.join(backupDir, f);
+            const stats = fs.statSync(ruta);
+            return {
+                nombre: f,
+                ruta: ruta,
+                fecha: stats.mtime,
+                tamano: stats.size
+            };
+        });
+});
+
+// Obtener versión de la app (desde package.json)
+ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
+});
+
+// Restaurar backup
+ipcMain.handle('restaurar-backup', async (event, backupPath) => {
+    try {
+        const dbPath = path.join(__dirname, 'src/database/gestorlocal.db');
+        // Cerrar la base de datos actual
+        if (db) db.close();
+        // Copiar backup al lugar original
+        fs.copyFileSync(backupPath, dbPath);
+        // Volver a conectar
+        await initDatabase();
+        return { success: true };
+    } catch (error) {
+        console.error('Error restaurando backup:', error);
+        return { success: false };
+    }
+});
+
+// Eliminar backup
+ipcMain.handle('eliminar-backup', async (event, backupPath) => {
+    try {
+        fs.unlinkSync(backupPath);
+        return { success: true };
+    } catch (error) {
+        console.error('Error eliminando backup:', error);
+        return { success: false };
+    }
+});
+
+ipcMain.handle('get-versions', () => {
+    return {
+        electron: process.versions.electron,
+        node: process.versions.node,
+        chrome: process.versions.chrome
+    };
+});

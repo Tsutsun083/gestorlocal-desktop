@@ -5,7 +5,9 @@
 // ============================================
 export let configuracion = { 
     tasa_bcv: 50.00,
-    nombre_negocio: 'Mi Negocio'
+    nombre_negocio: 'Mi Negocio',
+    tema: 'claro',               // ← nuevo
+    color_primario: '#2563eb'    // ← nuevo
 };
 
 export let categorias = [];
@@ -52,19 +54,16 @@ export function redondearCantidad(cantidad) {
     return Math.round(cantidad * 1000) / 1000;
 }
 
-//obtenemos el cliente seleccionado para mostrar su info en la venta
+// Cliente seleccionado para ventas
 export let clienteSeleccionado = null;
-
 export function setClienteSeleccionado(cliente) {
     clienteSeleccionado = cliente;
 }
-// Usuario actual 
-export let usuarioActual = null; 
 
-// Función para actualizar el usuario actual (puede ser útil para mostrar su nombre en la UI, o para registrar quién hizo cada venta)
+// Usuario actual
+export let usuarioActual = null;
 export function setUsuarioActual(user) {
     usuarioActual = user;
-    // Si queréis, podéis guardar el nombre en el localStorage pa' que no se borre al reiniciar
     if(user) {
         localStorage.setItem('ultimoUsuario', user.username);
     } else {

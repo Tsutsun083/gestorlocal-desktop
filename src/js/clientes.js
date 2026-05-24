@@ -167,6 +167,7 @@ function mostrarFormularioCliente() {
 // ============================================
 // MODAL: COBRAR DEUDA
 // ============================================
+// Reemplaza toda la función mostrarFormularioAbono con esto:
 function mostrarFormularioAbono(id, nombre, deudaActual) {
     const contenido = `
         <div style="background: #fee2e2; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
@@ -188,12 +189,12 @@ function mostrarFormularioAbono(id, nombre, deudaActual) {
         <div class="modal-actions">
             <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancelar</button>
             <button class="btn btn-success" id="btn-procesar-abono">Procesar Pago</button>
-            <button class="btn btn-warning btn-sm" onclick="mostrarModalAsignarDeuda(${c.id}, '${c.nombre}')">
-            <i class="fas fa-hand-holding-usd"></i> Fiar
-        </button>
-            <button class="btn btn-success btn-sm" onclick="mostrarModalCobrar(${c.id}, '${c.nombre}', ${c.deuda})">
-             <i class="fas fa-cash-register"></i> Cobrar
-        </button>
+            <button class="btn btn-warning btn-sm" onclick="mostrarModalAsignarDeuda(${id}, '${nombre}')">
+                <i class="fas fa-hand-holding-usd"></i> Fiar
+            </button>
+            <button class="btn btn-success btn-sm" onclick="mostrarModalCobro(${id}, '${nombre}', ${deudaActual})">
+                 <i class="fas fa-cash-register"></i> Cobrar
+            </button>
         </div>
     `;
     const modal = crearModal(`💰 Cobrar a ${nombre}`, contenido, '400px');
@@ -208,11 +209,10 @@ function mostrarFormularioAbono(id, nombre, deudaActual) {
         }
 
         try {
-            // Mandamos a pagar la trampa
             await abonarDeudaCliente({ clienteId: id, monto, metodoPago: metodo });
             mostrarNotificacion('¡Pago registrado! Los cobres ya están en el reporte.');
             modal.remove();
-            loadClientes(); // Actualizar tabla
+            loadClientes();
         } catch (err) {
             console.error(err);
             mostrarNotificacion('Error procesando el abono', 'error');

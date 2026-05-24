@@ -1,4 +1,4 @@
-// config.js - Módulo de configuración
+// config.js - Módulo de configuración (UNIFICADO)
 
 import { configuracion, setConfiguracion } from './state.js';
 import { getConfiguracion, updateTasaBCV, updateConfig, getVersions } from './database.js';
@@ -7,6 +7,10 @@ import { mostrarNotificacion } from './ui.js';
 export async function loadConfig() {
     const content = document.getElementById('page-content');
     if (!content) return;
+
+    // Validar si es admin para mostrar la sección de seguridad
+    const rolActual = localStorage.getItem('rol') || 'usuario'; 
+    const esAdmin = rolActual === 'admin';
 
     // Obtener datos actuales
     const config = await getConfiguracion();
@@ -22,7 +26,7 @@ export async function loadConfig() {
 
     const versions = await getVersions();
 
-    content.innerHTML = `
+    let html = `
         <h2>⚙️ Configuración del Sistema</h2>
         
         <div class="config-section">
@@ -73,7 +77,87 @@ export async function loadConfig() {
         </div>
     `;
 
-    // Eventos
+    // -----------------------------------------------------------
+    // INYECCIÓN DE LA SECCIÓN DE SEGURIDAD (SOLO ADMIN)
+    // -----------------------------------------------------------
+    if (esAdmin) {
+        html += `
+            <div class="card config-section" style="border-left: 5px solid #dc2626; background: var(--surface-color); border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 20px; margin-bottom: 20px;">
+                <div class="card-content">
+                    <div style="margin-bottom: 20px;">
+                        <h3 style="margin-top: 0; color: var(--text-color);"><i class="fas fa-shield-alt"></i> Seguridad y Accesos</h3>
+                        <p style="color: #64748b; margin: 0;">Desde aquí podéis cambiar los usuarios y contraseñas. ¡Mosca con olvidar estos datos!</p>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <!-- Formulario del Administrador -->
+                        <div style="background: var(--bg-color); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
+                            <h4 style="margin-top: 0; color: var(--text-color);"><i class="fas fa-user-tie"></i> Credenciales del Dueño</h4>
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-color);">Nuevo Usuario Admin:</label>
+                                <input type="text" id="admin-user-input" class="form-control" style="width: 100%; padding: 8px; border-radius: 5px;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-color);">Nueva Clave Admin:</label>
+                                <input type="password" id="admin-pass-input" class="form-control" style="width: 100%; padding: 8px; border-radius: 5px;">
+                            </div>
+                            <button id="btn-update-admin" class="btn btn-primary" style="width: 100%; padding: 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                                <i class="fas fa-save"></i> Actualizar Dueño
+                            </button>
+                        </div>
+
+                        <!-- Formulario del Vendedor -->
+                        <div style="background: var(--bg-color); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
+                            <h4 style="margin-top: 0; color: var(--text-color);"><i class="fas fa-user"></i> Credenciales del Cajero</h4>
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-color);">Nuevo Usuario Vendedor:</label>
+                                <input type="text" id="vend-user-input" class="form-control" style="width: 100%; padding: 8px; border-radius: 5px;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-color);">Nueva Clave Vendedor:</label>
+                                <input type="password" id="vend-pass-input" class="form-control" style="width: 100%; padding: 8px; border-radius: 5px;">
+                            </div>
+                            <button id="btn-update-vendedor" class="btn" style="background-color: #059669; color: white; width: 100%; padding: 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                                <i class="fas fa-save"></i> Actualizar Cajero
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // -----------------------------------------------------------
+    // BOTÓN FLOTANTE DE CERRAR SESIÓN
+    // -----------------------------------------------------------
+    html += `
+            <button id="btn-cerrar-sesion" style="
+                position: fixed; 
+                bottom: 30px; 
+                right: 30px; 
+                background-color: #2563eb; 
+                color: white; 
+                border: none; 
+                border-radius: 50px; 
+                padding: 15px 25px; 
+                font-weight: bold; 
+                font-size: 15px; 
+                cursor: pointer; 
+                display: flex; 
+                align-items: center; 
+                gap: 10px; 
+                box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4); 
+                transition: transform 0.2s, background 0.2s;
+                z-index: 1000;">
+                <i class="fas fa-sign-out-alt" style="font-size: 18px;"></i> Cerrar Sesión
+            </button>
+    `;
+
+    content.innerHTML = html;
+
+    // ============================================
+    // EVENTOS
+    // ============================================
     document.getElementById('btn-guardar-negocio').addEventListener('click', guardarDatosNegocio);
     document.getElementById('btn-guardar-apariencia').addEventListener('click', guardarApariencia);
     document.getElementById('btn-backup-manual').addEventListener('click', crearBackupManual);
@@ -84,10 +168,69 @@ export async function loadConfig() {
     document.querySelectorAll('.btn-eliminar-backup').forEach(btn => {
         btn.addEventListener('click', () => eliminarBackup(btn.dataset.path));
     });
+
+    // Eventos de Seguridad
+    if (esAdmin) {
+        document.getElementById('btn-update-admin').addEventListener('click', () => guardarCredenciales('admin'));
+        document.getElementById('btn-update-vendedor').addEventListener('click', () => guardarCredenciales('vendedor'));
+    }
+
+    // Evento Cerrar Sesión
+    const btnCerrar = document.getElementById('btn-cerrar-sesion');
+    if (btnCerrar) {
+        btnCerrar.addEventListener('click', () => {
+            const confirmar = confirm("¿Estáis seguro que queréis cerrar la sesión?");
+            if (confirmar) {
+                localStorage.removeItem('rol');
+                window.location.reload();
+            }
+        });
+        btnCerrar.addEventListener('mouseenter', () => btnCerrar.style.transform = 'scale(1.05)');
+        btnCerrar.addEventListener('mouseleave', () => btnCerrar.style.transform = 'scale(1)');
+    }
 }
 
 // ============================================
-// FUNCIONES AUXILIARES
+// FUNCIONES DE SEGURIDAD (NUEVAS)
+// ============================================
+async function guardarCredenciales(rol) {
+    const isAdmin = rol === 'admin';
+    const userEl = document.getElementById(isAdmin ? 'admin-user-input' : 'vend-user-input');
+    const passEl = document.getElementById(isAdmin ? 'admin-pass-input' : 'vend-pass-input');
+
+    const nuevoUsuario = userEl.value.trim();
+    const nuevaClave = passEl.value.trim();
+
+    if (!nuevoUsuario || !nuevaClave) {
+        mostrarNotificacion('¡Vergación! Tenéis que llenar usuario y clave pa\' poder guardar.', 'warning');
+        return;
+    }
+
+    const confirmar = confirm(`¿Estáis seguro de cambiar los datos del ${rol}?`);
+    if (!confirmar) return;
+
+    try {
+        const res = await window.electronAPI.updateCredenciales({
+            rol: rol,
+            nuevoUsuario: nuevoUsuario,
+            nuevaClave: nuevaClave
+        });
+
+        if (res.success) {
+            mostrarNotificacion(`¡Molleja de bien! Los datos se actualizaron al pelo.`, 'success');
+            userEl.value = '';
+            passEl.value = '';
+        } else {
+            mostrarNotificacion(`Hubo un rollo: ${res.message}`, 'error');
+        }
+    } catch (error) {
+        console.error("Error cambiando clave:", error);
+        mostrarNotificacion('Se escoñetó la conexión con la base de datos.', 'error');
+    }
+}
+
+// ============================================
+// FUNCIONES AUXILIARES (ORIGINALES INTACTAS)
 // ============================================
 function escapeHtml(str) {
     if (!str) return '';

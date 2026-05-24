@@ -387,11 +387,7 @@ function setupFinalizarVenta() {
                 mostrarNotificacion('✅ Venta registrada exitosamente');
                 setCarritoVentas([]);
                 actualizarCarritoUI();
-                
-                // Actualizar productos (stock)
-                const { cargarProductos } = await import('./productos.js');
-                await cargarProductos();
-                
+             
                 document.getElementById('buscador-ventas').value = '';
                 document.getElementById('resultados-busqueda').innerHTML = 
                     '<div class="loading-message">Escribe para buscar productos...</div>';

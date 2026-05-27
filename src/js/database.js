@@ -151,6 +151,9 @@ export async function abonarDeudaCliente(datosAbono) {
 export async function asignarDeuda(data) {
     return await window.electronAPI.asignarDeuda(data);
 }
+export async function getDetallesDeuda(clienteId) {
+    return await window.electronAPI.getDetallesDeuda(clienteId);
+}
 // ============================================
 // USUARIOS
 // ============================================

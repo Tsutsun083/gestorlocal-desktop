@@ -65,6 +65,7 @@ export function loadVentas() {
                             <option value="tarjeta">Tarjeta</option>
                             <option value="biopago">Biopago</option>
                             <option value="mixto">Mixto</option>
+                            <option value="credito" style="color: #dc2626; font-weight: bold;">Crédito</option>
                         </select>
                     </div>
                     
@@ -349,6 +350,11 @@ function setupFinalizarVenta() {
         }
         
         const metodoPago = document.getElementById('metodo-pago').value;
+
+        if (metodoPago === 'credito' && (!clienteSeleccionado || !clienteSeleccionado.id)) {
+            return mostrarNotificacion('¡ATENCION! Para vender a crédito tienes que asignar a un cliente registrado, no puedes fiarle al Consumidor Final.', 'error');
+        }
+
         const total = carritoVentas.reduce((sum, item) => sum + item.subtotal, 0);
         
         const resumen = carritoVentas.map(item => 

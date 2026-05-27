@@ -1,12 +1,12 @@
 // clientes.js - Módulo de gestión de clientes y cuentas por cobrar
 import { crearModal, cerrarTodosLosModales, mostrarNotificacion } from './ui.js';
-import { getClientes, addCliente, abonarDeudaCliente, asignarDeuda } from './database.js';
+import { setClienteSeleccionado } from './state.js';
+import { getClientes, addCliente, abonarDeudaCliente, asignarDeuda, getDetallesDeuda } from './database.js';
 let clientesLista = [];
 
 // ============================================
 // PÁGINA PRINCIPAL DE CLIENTES
 // ============================================
-
 export async function loadClientes() {
     const content = document.getElementById('page-content');
     if (!content) return;
@@ -35,89 +35,65 @@ export async function loadClientes() {
                     </tr>
                 </thead>
                 <tbody id="lista-clientes-body">
-                    ${clientesLista.map(c => `
+                    ${clientesLista.map(c => {
+                        const deudaBs = c.deuda || 0;
+                        return `
                         <tr>
-                            <td>${c.nombre}</td>
+                            <td><strong>${c.nombre}</strong></td>
                             <td>${c.ci || 'N/A'}</td>
                             <td>${c.telefono || '-'}</td>
-                            <td style="font-weight:bold; color: ${c.deuda > 0 ? '#dc2626' : '#059669'}">
-                                ${c.deuda.toFixed(2)} Bs.
+                            
+                            <td style="font-weight: bold; color: ${deudaBs > 0 ? '#dc2626' : '#059669'};">
+                                ${deudaBs ? deudaBs.toLocaleString('es-VE') : '0'} Bs
+                                ${deudaBs > 0 ? `<button class="btn-icon" onclick="window.mostrarModalDetallesDeuda(${c.id}, '${c.nombre}')" title="Ver detalle de productos fiados" style="margin-left: 8px;"><i class="fas fa-file-invoice-dollar" style="color: #ea580c; font-size: 1.2em;"></i></button>` : ''}
                             </td>
+                            
                             <td>
-                                <button class="btn-icon btn-edit btn-cobrar" 
+                                <button class="btn-icon btn-edit btn-abonar" 
                                         data-id="${c.id}" 
                                         data-nombre="${c.nombre}" 
-                                        data-deuda="${c.deuda}"
-                                        title="Cobrar">
+                                        data-deuda="${deudaBs}"
+                                        title="Gestionar Deuda">
                                     <i class="fas fa-hand-holding-usd"></i>
                                 </button>
                                 <button class="btn-icon btn-edit btn-asignar-deuda" 
-                                        data-id="${c.id}" data-nombre="${c.nombre}">
+                                        data-id="${c.id}" data-nombre="${c.nombre}"
+                                        title="Ir directo a fiar">
                                     <i class="fas fa-plus-circle"></i>
                                 </button>
                             </td>
                         </tr>
-                    `).join('')}
+                    `}).join('')}
                 </tbody>
             </table>
         </div>
     `;
-    document.querySelectorAll('.btn-cobrar').forEach(btn => {
+
+    // Eventos para el botón principal de gestionar deuda (Llama a mostrarFormularioAbono)
+    document.querySelectorAll('.btn-abonar').forEach(btn => {
         btn.addEventListener('click', () => {
             const id = btn.getAttribute('data-id');
             const nombre = btn.getAttribute('data-nombre');
             const deuda = parseFloat(btn.getAttribute('data-deuda'));
             
             if (deuda <= 0) {
-                return mostrarNotificacion('¡Ese cliente no debe nada, está sano!', 'success');
+                // Si no debe nada, le tiramos la notificación, pero lo dejamos abrir si quiere fiar
+                mostrarNotificacion('Este cliente está solvente, pero podéis fiarle si queréis.', 'success');
             }
-            mostrarModalCobro(id, nombre, deuda);
+            // ¡Llamamos al modal nuevo!
+            mostrarFormularioAbono(id, nombre, deuda);
         });
     });
-    // Escuchamos los botones de Asignar Deuda (pa' que no se te olvide)
+
+    // Evento para el botón de ir a fiar directo
     document.querySelectorAll('.btn-asignar-deuda').forEach(btn => {
         btn.addEventListener('click', () => {
             mostrarModalAsignarDeuda(btn.getAttribute('data-id'), btn.getAttribute('data-nombre'));
         });
     });
+
     // Evento para nuevo cliente
     document.getElementById('btn-nuevo-cliente').addEventListener('click', () => mostrarFormularioCliente());
-}
-function renderizarTablaClientes(lista) {
-    const tbody = document.getElementById('tabla-clientes-body');
-    if (lista.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No hay clientes pa\' mostrar</td></tr>';
-        return;
-    }
-    tbody.innerHTML = lista.map(c => {
-        const deudaBs = c.deuda || 0;
-        const claseDeuda = deudaBs > 0 ? 'color: #dc2626; font-weight: bold;' : 'color: #059669;';
-        
-        return `
-            <tr>
-                <td><strong>${c.nombre}</strong></td>
-                <td>${c.ci || 'N/A'}</td>
-                <td>${c.telefono || 'N/A'}</td>
-                <td style="${claseDeuda}">${deudaBs.toLocaleString('es-VE')} Bs</td>
-             <td>
-                <button class="btn btn-warning btn-sm" onclick="mostrarModalAsignarDeuda(${c.id}, '${c.nombre}')">
-                    <i class="fas fa-hand-holding-usd"></i> Fiar
-                </button>
-                <button class="btn btn-success btn-sm" onclick="mostrarModalCobrar(${c.id}, '${c.nombre}', ${c.deuda})">
-                    <i class="fas fa-cash-register"></i> Cobrar
-                </button>
-            </td>
-        </tr>
-        `;
-    }).join('');
-
-    // Agregar eventos a los botones de cobrar
-    document.querySelectorAll('.btn-abonar').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const { id, nombre, deuda } = e.currentTarget.dataset;
-            mostrarFormularioAbono(id, nombre, parseFloat(deuda));
-        });
-    });
 }
 // ============================================
 // MODAL: NUEVO CLIENTE
@@ -204,13 +180,13 @@ function mostrarFormularioAbono(id, nombre, deudaActual) {
         const metodo = document.getElementById('abono-metodo').value;
 
         if (isNaN(monto) || monto <= 0 || monto > deudaActual) {
-            mostrarNotificacion('¡Monto inválido, revisá bien los números!', 'error');
+            mostrarNotificacion('¡Monto inválido, revisa bien los números!', 'error');
             return;
         }
 
         try {
             await abonarDeudaCliente({ clienteId: id, monto, metodoPago: metodo });
-            mostrarNotificacion('¡Pago registrado! Los cobres ya están en el reporte.');
+            mostrarNotificacion('¡Pago registrado!.');
             modal.remove();
             loadClientes();
         } catch (err) {
@@ -234,9 +210,9 @@ function mostrarModalCobro(id, nombre, deudaActual) {
             <label>Método de Pago:</label>
             <select id="abono-metodo" class="form-control">
                 <option value="efectivo">Efectivo</option>
-                <option value="pago_movil">Pago Móvil</option>
-                <option value="punto">Punto de Venta</option>
-                <option value="divisas">Divisas (Efectivo)</option>
+                <option value="pago movil">Pago Móvil</option>
+                <option value="tarjeta">Tarjeta</option>
+                <option value="biopago">Biopago (Efectivo)</option>
             </select>
         </div>
         <div class="modal-actions" style="display:flex; justify-content: flex-end; gap:10px;">
@@ -282,37 +258,83 @@ export function buscarClientesFiltro(termino) {
     );
 }
 export function mostrarModalAsignarDeuda(id, nombre) {
-    const contenido = `
-        <div class="form-group" style="margin-bottom: 15px;">
-            <label style="display:block; margin-bottom:5px;">Monto de la Deuda (Bs):</label>
-            <input type="number" id="deuda-monto" class="form-control" placeholder="0.00" step="0.01">
-        </div>
-        <div class="modal-actions" style="display:flex; justify-content: flex-end; gap:10px;">
-            <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancelar</button>
-            <button class="btn btn-primary" id="btn-guardar-deuda">Confirmar Deuda</button>
-        </div>
-    `;
-    const modal = crearModal(`📝 Asignar Deuda a ${nombre}`, contenido, '350px');
+    // 1. Le preguntamos al usuario si está seguro pa' no mandarlo a ventas por error
+    const confirmar = confirm(`¿Quieres ir al Punto de Venta para registrar los productos que se va a llevar ${nombre} a crédito?`);
+    if (!confirmar) return;
 
-    document.getElementById('btn-guardar-deuda').addEventListener('click', async () => {
-        const montoInput = document.getElementById('deuda-monto');
-        const monto = parseFloat(montoInput.value);
+    // 2. Le inyectamos este cliente a la memoria global del sistema
+    setClienteSeleccionado({ id: id, nombre: nombre, ci: 'Registrado' });
 
-        if (isNaN(monto) || monto <= 0) {
-            return mostrarNotificacion('¡Epa primo, meté un monto que valga la pena!', 'error');
-        }
-        try {
-            // Llamamos a la base de datos
-            await asignarDeuda({ clienteId: id, monto: monto });
-            
-            mostrarNotificacion('¡Listo! Deuda anotada en la cuenta.');
-            modal.remove(); // Cerramos el modal
-            loadClientes(); // Recargamos la tabla para que se vea el nuevo saldo
-        } catch (error) {
-            console.error(error);
-            mostrarNotificacion('Molleja ' + nombre + ', hubo un error guardando eso.', 'error');
-        }
-    });
+    // 3. Cerramos el modal donde estábamos parados
+    const modales = document.querySelectorAll('.modal');
+    modales.forEach(m => m.remove());
+
+    // 4. Hacemos que Javascript le dé un clic fantasma al botón de "Ventas" de tu menú lateral
+    const btnVentas = document.querySelector('[data-page="ventas"]');
+    if (btnVentas) {
+        btnVentas.click();
+    }
+
+    // 5. Le tiramos una notificación al cajero pa' que sepa qué hacer ahora
+    mostrarNotificacion(`¡Listo! Selecciona los productos para ${nombre} y selecciona "Crédito" como método de pago.`, 'success');
 }
+
+// ============================================
+// MOSTRAR DETALLES DE LA DEUDA
+// ============================================
+window.mostrarModalDetallesDeuda = async function(id, nombre) {
+    try {
+        const detalles = await getDetallesDeuda(id);
+        
+        let htmlTabla = '';
+        if (detalles.length === 0) {
+            htmlTabla = '<p style="text-align:center; color:#64748b;">No hay registros detallados de productos para esta deuda.</p>';
+        } else {
+            htmlTabla = `
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <table class="productos-table" style="width: 100%; font-size: 13px;">
+                        <thead style="position: sticky; top: 0; background: var(--surface-color);">
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Producto</th>
+                                <th>Cant.</th>
+                                <th>Precio</th>
+                                <th>Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${detalles.map(d => `
+                                <tr>
+                                    <td style="color:#64748b;">${new Date(d.fecha).toLocaleDateString('es-VE')}</td>
+                                    <td><strong>${d.producto}</strong></td>
+                                    <td>${d.cantidad}</td>
+                                    <td>${d.precio_unitario.toLocaleString('es-VE')} Bs</td>
+                                    <td style="color:#dc2626; font-weight:bold;">${d.subtotal.toLocaleString('es-VE')} Bs</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        const contenido = `
+            <div style="margin-bottom: 15px;">
+                <p style="margin:0; color:#64748b;">Historial de productos llevados a crédito por este cliente.</p>
+            </div>
+            ${htmlTabla}
+            <div class="modal-actions" style="margin-top:20px; text-align:right;">
+                <button class="btn btn-primary" onclick="this.closest('.modal').remove()">Cerrar</button>
+            </div>
+        `;
+
+        crearModal(`🧾 Detalles de Deuda - ${nombre}`, contenido, '700px');
+
+    } catch (error) {
+        console.error("Error cargando detalles:", error);
+        mostrarNotificacion('¡Error! No se pudieron cargar los detalles de la deuda.', 'error');
+    }
+};
 window.mostrarModalAsignarDeuda = mostrarModalAsignarDeuda;
 window.mostrarFormularioAbono= mostrarFormularioAbono; 
+

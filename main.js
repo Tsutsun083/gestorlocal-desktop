@@ -931,18 +931,34 @@ ipcMain.handle('registrar-venta', async (event, ventaData) => {
             db.run(`UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ? AND stock_actual >= ?`, [item.cantidad, item.producto_id, item.cantidad], function(err) {
               if (err) error = true;
               pendientes--;
+              
+              // Cuando termina de procesar todos los productos del carrito
               if (pendientes === 0) {
                 if (error) { 
                     db.run('ROLLBACK'); 
                     reject(new Error('Error en la venta')); 
                 } else { 
-                    db.run('COMMIT'); 
                     
-                    // ¡AQUÍ ESTÁ EL GATILLO! 
-                    // Lo llamamos sin 'await' para que el cliente no se quede esperando a que el PDF se cree
-                    verificarYExportarVentas(); 
-
-                    resolve({ success: true, ventaId }); 
+                    // Revisamos si la venta fue fiada y si hay un cliente válido
+                    if (metodoPago === 'credito' && clienteId) {
+                        db.run(`UPDATE clientes SET deuda = deuda + ? WHERE id = ?`, [total, clienteId], (errDeuda) => {
+                            if (errDeuda) {
+                                console.error("Vergación, hubo un rollo sumando la deuda:", errDeuda);
+                                db.run('ROLLBACK');
+                                reject(new Error('Error actualizando deuda del cliente'));
+                            } else {
+                                // Si sumó bien la deuda, cerramos trato
+                                db.run('COMMIT'); 
+                                verificarYExportarVentas(); 
+                                resolve({ success: true, ventaId });
+                            }
+                        });
+                    } else {
+                        // Si pagó normalito (efectivo, pagomovil, etc), cerramos trato de una vez
+                        db.run('COMMIT'); 
+                        verificarYExportarVentas(); 
+                        resolve({ success: true, ventaId }); 
+                    }
                 }
               }
             });
@@ -954,10 +970,35 @@ ipcMain.handle('registrar-venta', async (event, ventaData) => {
 });
 ipcMain.handle('get-ventas-dia', async () => {
   return withDbReady(() => new Promise((resolve, reject) => {
-    const query = `SELECT COUNT(*) as cantidad, COALESCE(SUM(total), 0) as total FROM ventas WHERE fecha >= datetime('now', 'start of day') AND fecha < datetime('now', 'start of day', '+1 day')`;
+    const query = `SELECT COUNT(*) as cantidad, COALESCE(SUM(total), 0) as total FROM ventas WHERE fecha >= datetime('now', 'start of day') AND fecha < datetime('now', 'start of day', '+1 day') AND metodo_pago != 'credito'`;
     db.get(query, [], (err, row) => {
       if (err) reject(err);
       else resolve({ cantidad: row?.cantidad || 0, total: row?.total || 0 });
+    });
+  }));
+});
+// ============================================
+// HISTORIAL DE DEUDAS 
+// ============================================
+ipcMain.handle('get-detalles-deuda', async (event, clienteId) => {
+  return withDbReady(() => new Promise((resolve, reject) => {
+    // Cruzamos ventas, detalles y productos para traer la lista exacta
+    const query = `
+      SELECT v.fecha, p.nombre as producto, vd.cantidad, vd.precio_unitario, vd.subtotal
+      FROM ventas v
+      JOIN venta_detalles vd ON v.id = vd.venta_id
+      JOIN productos p ON vd.producto_id = p.id
+      WHERE v.cliente_id = ? AND v.metodo_pago = 'credito'
+      ORDER BY v.fecha DESC
+    `;
+    
+    db.all(query, [clienteId], (err, rows) => {
+      if (err) {
+          console.error("Error buscando detalles de deuda:", err);
+          reject(err);
+      } else {
+          resolve(rows || []);
+      }
     });
   }));
 });
@@ -1128,7 +1169,13 @@ ipcMain.handle('get-historial-ventas', async () => {
 
 ipcMain.handle('get-totales-reportes', async () => {
   return withDbReady(() => new Promise((resolve, reject) => {
-    const query = `SELECT SUM(CASE WHEN date(fecha) = date('now', 'localtime') THEN total ELSE 0 END) as hoy, SUM(CASE WHEN strftime('%Y-%W', fecha) = strftime('%Y-%W', 'now', 'localtime') THEN total ELSE 0 END) as semana, SUM(CASE WHEN strftime('%m-%Y', fecha) = strftime('%m-%Y', 'now', 'localtime') THEN total ELSE 0 END) as mes FROM ventas`;
+    // Excluimos el crédito de los 3 cálculos (hoy, semana y mes)
+    const query = `
+      SELECT 
+        SUM(CASE WHEN date(fecha) = date('now', 'localtime') AND metodo_pago != 'credito' THEN total ELSE 0 END) as hoy, 
+        SUM(CASE WHEN strftime('%Y-%W', fecha) = strftime('%Y-%W', 'now', 'localtime') AND metodo_pago != 'credito' THEN total ELSE 0 END) as semana, 
+        SUM(CASE WHEN strftime('%m-%Y', fecha) = strftime('%m-%Y', 'now', 'localtime') AND metodo_pago != 'credito' THEN total ELSE 0 END) as mes 
+      FROM ventas`;
     db.get(query, [], (err, row) => {
       if (err) reject(err);
       else resolve({ hoy: row?.hoy || 0, semana: row?.semana || 0, mes: row?.mes || 0 });
@@ -1193,7 +1240,6 @@ ipcMain.handle('add-cliente', async (event, cliente) => {
   });
 });
 
-// ESTA ES LA JOYA DE LA CORONA: El Abono
 ipcMain.handle('abonar-deuda', async (event, data) => {
   return withDbReady(() => {
     return new Promise((resolve, reject) => {
@@ -1202,24 +1248,22 @@ ipcMain.handle('abonar-deuda', async (event, data) => {
       db.serialize(() => {
         db.run('BEGIN TRANSACTION');
 
-        // 1. Le bajamos la cuenta al cliente
         db.run(`UPDATE clientes SET deuda = deuda - ? WHERE id = ?`, [monto, clienteId], (err) => {
             if (err) { db.run('ROLLBACK'); return reject(err); }
         });
 
-        // 2. Registramos la entrada de dinero en la tabla de ventas pa' los reportes
-        // Le ponemos subtotal 0, pero total = monto para que no descuadre inventario
+        const metodoAbono = "Abono - " + metodoPago;
+        
         db.run(
           `INSERT INTO ventas (fecha, total, metodo_pago, subtotal, descuento, cliente_id) 
            VALUES (datetime('now', 'localtime'), ?, ?, 0, 0, ?)`,
-          [monto, metodoPago, clienteId],
+          [monto, metodoAbono, clienteId],
           function(err) {
             if (err) {
                 db.run('ROLLBACK'); 
                 return reject(err);
             }
             
-            // Listo, sellado y guardado
             db.run('COMMIT');
             resolve({ success: true, ventaId: this.lastID });
           }
@@ -1311,16 +1355,13 @@ ipcMain.handle('exportar-todas-ventas-pdf', async (event) => {
 
                 ventas.forEach(venta => {
                     const cliente = venta.cliente_nombre || 'Consumidor Final';
-                    
-                    // ¡AQUÍ ESTÁ LA MAGIA ARREGLADA!
-                    // Como guardas el total en Bolívares en la BD, lo agarramos para totalBs:
                     const totalBs = parseFloat(venta.total) || 0; 
-                    
-                    // Y calculamos los dólares dividiendo entre la tasa BCV que sacamos arriba:
                     const totalUSD = totalBs / tasaBCV; 
-                    
-                    gananciaTotalUSD += totalUSD;
-                    gananciaTotalBs += totalBs;
+
+                    if (venta.metodo_pago !== 'credito') {
+                        gananciaTotalUSD += totalUSD;
+                        gananciaTotalBs += totalBs;
+                    }
 
                     htmlFilas += `
                         <tr>
@@ -1426,13 +1467,13 @@ async function verificarYExportarVentas() {
                 // 3. Armamos las filas y sumamos los cobres con el arreglo que hicimos
                 ventas.forEach(venta => {
                     const cliente = venta.cliente_nombre || 'Consumidor Final';
-                    
-                    // ¡AQUÍ ESTÁ EL ARREGLO!
                     const totalBs = parseFloat(venta.total) || 0; 
                     const totalUSD = totalBs / tasaBCV; 
 
-                    gananciaTotalUSD += totalUSD;
-                    gananciaTotalBs += totalBs;
+                    if (venta.metodo_pago !== 'credito') {
+                        gananciaTotalUSD += totalUSD;
+                        gananciaTotalBs += totalBs;
+                    }
 
                     htmlFilas += `
                         <tr>

@@ -1,7 +1,7 @@
 // reportes.js - Módulo de estadísticas e historial
 import { configuracion } from './state.js';
-// Aquí importamos las funciones de database.js (ajusta los nombres según tu database.js)
 import { getHistorialVentas, getTotalesReportes } from './database.js';
+import { mostrarNotificacion } from './ui.js'; 
 
 export async function loadReportes() {
     const content = document.getElementById('page-content');
@@ -10,7 +10,8 @@ export async function loadReportes() {
     // 1. Dibujamos la estructura (HTML)
     content.innerHTML = `
         <div class="reports-section">
-            <div class="dashboard-grid"> <div class="card" style="border-left: 5px solid #2563eb;">
+            <div class="dashboard-grid"> 
+                <div class="card" style="border-left: 5px solid #2563eb;">
                     <div class="card-content">
                         <h3>Ventas Hoy</h3>
                         <p class="card-value" id="rep-hoy">0.00 $</p>
@@ -33,17 +34,18 @@ export async function loadReportes() {
             <div class="table-container" style="background: white; border-radius: 12px; padding: 20px; margin-top: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h3>Historial de Ventas</h3>
-                    <button class="btn btn-secondary" onclick="window.print()">
-                        <i class="fas fa-file-pdf"></i> Imprimir / PDF
+                    <button class="btn btn-secondary" id="btn-exportar-pdf" style="background-color: #dc2626; color: white; border: none;">
+                        <i class="fas fa-file-pdf"></i> Exportar Manual
                     </button>
                 </div>
-                <table class="productos-table"> <thead>
+                <table class="productos-table"> 
+                    <thead>
                         <tr>
                             <th>Fecha</th>
                             <th>Método</th>
                             <th>Total Bs.</th>
                             <th>Total USD.</th>
-                            <th>Acciones</th>
+                            <th>Nombre de cliente</th>
                         </tr>
                     </thead>
                     <tbody id="lista-ventas-reporte">
@@ -57,6 +59,37 @@ export async function loadReportes() {
     // 2. Ejecutamos la carga de datos
     actualizarCifrasReporte();
     renderizarTablaHistorial();
+
+    // 3. AQUÍ ES DONDE VA LA LÓGICA DEL BOTÓN (Después de que existe en el HTML)
+    const btnExportar = document.getElementById('btn-exportar-pdf');
+    if (btnExportar) {
+        btnExportar.addEventListener('click', async () => {
+            const textoOriginal = btnExportar.innerHTML;
+            btnExportar.innerHTML = '⏳ Generando PDF...';
+            btnExportar.disabled = true;
+
+            try {
+                const res = await window.electronAPI.exportarTodasVentasPDF();
+                
+                if (res.cancelado) {
+                    console.log("Exportación cancelada por el usuario.");
+                } else if (res.empty) {
+                    mostrarNotificacion('No hay ventas registradas.', 'warning');
+                } else if (res.success) {
+                    mostrarNotificacion(`¡Reporte guardado!`, 'success');
+                } else {
+                    console.error("Error del backend:", res.error);
+                    mostrarNotificacion('Error al generar el PDF.', 'error');
+                }
+            } catch (error) {
+                console.error("Error exportando:", error);
+                mostrarNotificacion('Error al exportar las ventas.', 'error');
+            } finally {
+                btnExportar.innerHTML = textoOriginal;
+                btnExportar.disabled = false;
+            }
+        });
+    }
 }
 
 async function actualizarCifrasReporte() {
@@ -88,9 +121,7 @@ async function renderizarTablaHistorial() {
                     <td><span class="stock-badge stock-normal">${v.metodo_pago}</span></td>
                     <td style="font-weight: bold; color: #059669;">${v.total.toFixed(2)} Bs.</td>
                     <td style="color: #64748b;">${montoBS.toLocaleString('es-VE')} $</td>
-                    <td>
-                        <button class="btn-icon btn-edit"><i class="fas fa-eye"></i></button>
-                    </td>
+                    <td>${v.cliente_nombre || 'Consumidor Final'}</td>
                 </tr>
             `;
         }).join('');

@@ -1,6 +1,6 @@
 import { inyectarEstilosGlobales, loadPlaceholder, mostrarNotificacion, mostrarModalTasa } from './ui.js';
 import { cargarDatosIniciales } from './init.js';
-import { loadProductos, mostrarFormularioProducto, } from './productos.js';
+import { loadProductos, mostrarFormularioProducto } from './productos.js';
 import { loadVentas } from './ventas.js';
 import { loadDashboard } from './dashboard.js';
 import { loadReportes } from './reportes.js';
@@ -11,7 +11,7 @@ import { validarLogin } from './database.js';
 import { aplicarTemaYColor, loadConfig } from './config.js';
 
 // ============================================
-// ATALOS DE TECLADO
+// ATAJOS DE TECLADO
 // ============================================
 function setupKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
@@ -48,7 +48,7 @@ function setupKeyboardShortcuts() {
 }
 
 // ============================================
-// APLICAR PERMISOS SEGÚN ROL
+// APLICAR PERMISOS SEGÚN ROL (Corregido)
 // ============================================
 function aplicarPermisos() {
     const rol = usuarioActual?.rol;
@@ -56,9 +56,10 @@ function aplicarPermisos() {
         const prohibidos = ['[data-page="compras"]', '[data-page="reportes"]'];
         prohibidos.forEach(selector => {
             const el = document.querySelector(selector);
-            if (el) el.style.display = 'none';
+            if (el) el.style.display = 'none'; // ¡Pa' fuera!
         });
-        // Redirigir a ventas si estaba en dashboard o productos
+        
+        // Si estaba en dashboard o productos, lo mandamos a ventas
         const activePage = document.querySelector('.nav-item.active')?.getAttribute('data-page');
         if (activePage === 'dashboard' || activePage === 'productos') {
             document.querySelector('[data-page="ventas"]')?.click();
@@ -67,7 +68,7 @@ function aplicarPermisos() {
 }
 
 // ============================================
-// PANTALLA DE LOGIN (integrada)
+// PANTALLA DE LOGIN
 // ============================================
 async function mostrarPantallaLogin() {
     return new Promise((resolve) => {
@@ -125,38 +126,37 @@ async function mostrarPantallaLogin() {
             const user = userInput.value.trim();
             const pass = passInput.value.trim();
             if (!user || !pass) {
-                mostrarNotificacion('¡Epa! No dejes los campos vacíos', 'error');
-                return;
+                return mostrarNotificacion('Por favor, completa todos los campos', 'error');
             }
             try {
                 const res = await validarLogin(user, pass);
                 if (res.success) {
                     setUsuarioActual(res.usuario);
+                    localStorage.setItem('rol', res.usuario.rol);
                     document.getElementById('login-overlay').remove();
                     await cargarDatosIniciales();
-                    const tema = configuracion.tema || 'claro';
-                    const colorPrimario = configuracion.color_primario || '#2563eb';
-                    aplicarTemaYColor(tema, colorPrimario);
-                    setupNavigation();
-                    setupButtons();
-                    aplicarPermisos();
-                    loadDashboard();
-                    mostrarNotificacion(`¡Qué fue, ${res.usuario.username}! Entraste fino.`);
-                    resolve(true);
+                    if (typeof setupNavigation === 'function') setupNavigation();
+                    if (typeof setupButtons === 'function') setupButtons();
+                    aplicarPermisos(); // Aplicar permisos justo al entrar
+                    if (typeof loadDashboard === 'function') loadDashboard();
+                    
+                    mostrarNotificacion(`¡Bienvenido, ${res.usuario.username}! Entraste sin problemas.`);
+                    resolve();
                 } else {
-                    mostrarNotificacion('Usuario o clave chimba, revisá bien', 'error');
+                    mostrarNotificacion('Usuario o clave incorrectos', 'error');
                 }
             } catch (error) {
                 console.error(error);
-                mostrarNotificacion('Se escoñetó algo en la conexión', 'error');
+                mostrarNotificacion('Error al intentar iniciar sesión', 'error');
             }
         });
+        
         userInput.focus();
     });
 }
 
 // ============================================
-// NAVEGACIÓN
+// NAVEGACIÓN (Limpiada la ruta de config)
 // ============================================
 function setupNavigation() {
     const navItems = document.querySelectorAll('.nav-item');
@@ -165,12 +165,15 @@ function setupNavigation() {
             e.preventDefault();
             const page = this.getAttribute('data-page');
             const rol = usuarioActual?.rol;
+            
             if (rol === 'vendedor' && (page === 'compras' || page === 'reportes')) {
                 mostrarNotificacion('No tienes permiso para entrar ahí.', 'error');
                 return;
             }
+            
             navItems.forEach(i => i.classList.remove('active'));
             this.classList.add('active');
+            
             const titles = {
                 'dashboard': 'Dashboard',
                 'productos': 'Gestión de Productos',
@@ -179,7 +182,8 @@ function setupNavigation() {
                 'config': 'Configuración',
                 'compras': 'Compras',
                 'clientes': 'Clientes'
-            };
+            }; 
+
             document.getElementById('page-title').textContent = titles[page];
             switch(page) {
                 case 'dashboard': loadDashboard(); break;
@@ -188,7 +192,7 @@ function setupNavigation() {
                 case 'compras': loadCompras(); break;
                 case 'reportes': loadReportes(); break;
                 case 'clientes': loadClientes(); break;
-                case 'config': loadConfig(); break;
+                case 'config': loadConfig(); break; // Se llama al config unificado
                 default: loadPlaceholder(page, titles[page]);
             }
         });
@@ -225,9 +229,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         return;
     }
 
-    await mostrarPantallaLogin(); // Login y carga de datos iniciales (dentro debe actualizar configuracion)
+    await mostrarPantallaLogin();
 
-    // Aplicar tema después de que configuracion esté cargada
     const tema = configuracion.tema || 'claro';
     const colorPrimario = configuracion.color_primario || '#2563eb';
     aplicarTemaYColor(tema, colorPrimario);

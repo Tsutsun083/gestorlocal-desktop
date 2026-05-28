@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
+const crypto = require('crypto');
 
 let mainWindow;
 let db;
@@ -13,6 +14,10 @@ dbReadyPromise = new Promise((resolve) => {
   dbResolve = resolve;
 });
 
+// Función para encriptar claves y que no queden en texto plano
+function encriptarClave(clave) {
+    return crypto.createHash('sha256').update(clave).digest('hex');
+}
 // ============================================
 // BASE DE DATOS
 // ============================================
@@ -55,14 +60,19 @@ function crearTablas() {
     )`, (err) => {
         if (err) return reject(err);
 
-        // Una vez creada, verificamos si está vacía para meter los usuarios iniciales
+       // Una vez creada, verificamos si está vacía para meter los usuarios iniciales
         db.get("SELECT COUNT(*) as count FROM usuarios", (err, row) => {
           if (row && row.count === 0) {
               const stmt = db.prepare("INSERT INTO usuarios (username, password, rol) VALUES (?, ?, ?)");
-              stmt.run("admin", "admin123", "admin"); // El jefe
-              stmt.run("vendedor", "ventas123", "vendedor"); // El trabajador
+              
+              // ¡Aquí encriptamos las claves iniciales!
+              const adminClave = encriptarClave("admin123");
+              const vendedorClave = encriptarClave("ventas123");
+              
+              stmt.run("admin", adminClave, "admin"); // El jefe
+              stmt.run("vendedor", vendedorClave, "vendedor"); // El trabajador
               stmt.finalize();
-              console.log("✅ Usuarios iniciales creados: admin/admin123 y vendedor/ventas123");
+              console.log("✅ Usuarios iniciales creados y encriptados");
           }
       });
     });
@@ -897,25 +907,59 @@ ipcMain.handle('get-productos-stock-bajo', async () => {
 // ============================================
 ipcMain.handle('registrar-venta', async (event, ventaData) => {
   return withDbReady(() => new Promise((resolve, reject) => {
-    const { items, total, metodoPago } = ventaData;
+    // 1. Agregamos clienteId aquí para extraerlo del paquete
+    const { items, total, metodoPago, clienteId } = ventaData; 
+    
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
-      db.run(`INSERT INTO ventas (fecha, total, metodo_pago) VALUES (datetime('now', 'localtime'), ?, ?)`, [total, metodoPago], function(err) {
+      
+      // 2. Metemos cliente_id en el INSERT
+      db.run(`INSERT INTO ventas (fecha, total, metodo_pago, cliente_id) VALUES (datetime('now', 'localtime'), ?, ?, ?)`, 
+      [total, metodoPago, clienteId || null], 
+      function(err) {
         if (err) { db.run('ROLLBACK'); reject(err); return; }
         const ventaId = this.lastID;
         let pendientes = items.length;
         let error = false;
+        
         items.forEach(item => {
           const sql = `INSERT INTO venta_detalles (venta_id, producto_id, cantidad, precio_unitario, subtotal, tipo_ingreso, unidad) VALUES (?, ?, ?, ?, ?, ?, ?)`;
           const params = [ventaId, item.producto_id, item.cantidad, item.precio_unitario, item.subtotal, item.tipo_ingreso || null, item.unidad || null];
+          
           db.run(sql, params, function(err) {
             if (err) error = true;
             db.run(`UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ? AND stock_actual >= ?`, [item.cantidad, item.producto_id, item.cantidad], function(err) {
               if (err) error = true;
               pendientes--;
+              
+              // Cuando termina de procesar todos los productos del carrito
               if (pendientes === 0) {
-                if (error) { db.run('ROLLBACK'); reject(new Error('Error en la venta')); }
-                else { db.run('COMMIT'); resolve({ success: true, ventaId }); }
+                if (error) { 
+                    db.run('ROLLBACK'); 
+                    reject(new Error('Error en la venta')); 
+                } else { 
+                    
+                    // Revisamos si la venta fue fiada y si hay un cliente válido
+                    if (metodoPago === 'credito' && clienteId) {
+                        db.run(`UPDATE clientes SET deuda = deuda + ? WHERE id = ?`, [total, clienteId], (errDeuda) => {
+                            if (errDeuda) {
+                                console.error("Vergación, hubo un rollo sumando la deuda:", errDeuda);
+                                db.run('ROLLBACK');
+                                reject(new Error('Error actualizando deuda del cliente'));
+                            } else {
+                                // Si sumó bien la deuda, cerramos trato
+                                db.run('COMMIT'); 
+                                verificarYExportarVentas(); 
+                                resolve({ success: true, ventaId });
+                            }
+                        });
+                    } else {
+                        // Si pagó normalito (efectivo, pagomovil, etc), cerramos trato de una vez
+                        db.run('COMMIT'); 
+                        verificarYExportarVentas(); 
+                        resolve({ success: true, ventaId }); 
+                    }
+                }
               }
             });
           });
@@ -924,17 +968,40 @@ ipcMain.handle('registrar-venta', async (event, ventaData) => {
     });
   }));
 });
-
 ipcMain.handle('get-ventas-dia', async () => {
   return withDbReady(() => new Promise((resolve, reject) => {
-    const query = `SELECT COUNT(*) as cantidad, COALESCE(SUM(total), 0) as total FROM ventas WHERE fecha >= datetime('now', 'start of day') AND fecha < datetime('now', 'start of day', '+1 day')`;
+    const query = `SELECT COUNT(*) as cantidad, COALESCE(SUM(total), 0) as total FROM ventas WHERE fecha >= datetime('now', 'start of day') AND fecha < datetime('now', 'start of day', '+1 day') AND metodo_pago != 'credito'`;
     db.get(query, [], (err, row) => {
       if (err) reject(err);
       else resolve({ cantidad: row?.cantidad || 0, total: row?.total || 0 });
     });
   }));
 });
-
+// ============================================
+// HISTORIAL DE DEUDAS 
+// ============================================
+ipcMain.handle('get-detalles-deuda', async (event, clienteId) => {
+  return withDbReady(() => new Promise((resolve, reject) => {
+    // Cruzamos ventas, detalles y productos para traer la lista exacta
+    const query = `
+      SELECT v.fecha, p.nombre as producto, vd.cantidad, vd.precio_unitario, vd.subtotal
+      FROM ventas v
+      JOIN venta_detalles vd ON v.id = vd.venta_id
+      JOIN productos p ON vd.producto_id = p.id
+      WHERE v.cliente_id = ? AND v.metodo_pago = 'credito'
+      ORDER BY v.fecha DESC
+    `;
+    
+    db.all(query, [clienteId], (err, rows) => {
+      if (err) {
+          console.error("Error buscando detalles de deuda:", err);
+          reject(err);
+      } else {
+          resolve(rows || []);
+      }
+    });
+  }));
+});
 // ============================================
 // MANEJADORES IPC - PROVEEDORES
 // ============================================
@@ -1087,12 +1154,13 @@ ipcMain.handle('update-orden-completa', async (event, ordenId, ordenData) => {
   }));
 });
 
+
 // ============================================
 // MANEJADORES IPC - REPORTES
 // ============================================
 ipcMain.handle('get-historial-ventas', async () => {
   return withDbReady(() => new Promise((resolve, reject) => {
-    db.all("SELECT * FROM ventas ORDER BY fecha DESC LIMIT 100", [], (err, rows) => {
+    db.all("SELECT ventas.*, clientes.nombre AS cliente_nombre FROM ventas LEFT JOIN clientes ON ventas.cliente_id = clientes.id ORDER BY fecha DESC LIMIT 100", [], (err, rows) => {
       if (err) reject(err);
       else resolve(rows || []);
     });
@@ -1101,7 +1169,13 @@ ipcMain.handle('get-historial-ventas', async () => {
 
 ipcMain.handle('get-totales-reportes', async () => {
   return withDbReady(() => new Promise((resolve, reject) => {
-    const query = `SELECT SUM(CASE WHEN date(fecha) = date('now', 'localtime') THEN total ELSE 0 END) as hoy, SUM(CASE WHEN strftime('%Y-%W', fecha) = strftime('%Y-%W', 'now', 'localtime') THEN total ELSE 0 END) as semana, SUM(CASE WHEN strftime('%m-%Y', fecha) = strftime('%m-%Y', 'now', 'localtime') THEN total ELSE 0 END) as mes FROM ventas`;
+    // Excluimos el crédito de los 3 cálculos (hoy, semana y mes)
+    const query = `
+      SELECT 
+        SUM(CASE WHEN date(fecha) = date('now', 'localtime') AND metodo_pago != 'credito' THEN total ELSE 0 END) as hoy, 
+        SUM(CASE WHEN strftime('%Y-%W', fecha) = strftime('%Y-%W', 'now', 'localtime') AND metodo_pago != 'credito' THEN total ELSE 0 END) as semana, 
+        SUM(CASE WHEN strftime('%m-%Y', fecha) = strftime('%m-%Y', 'now', 'localtime') AND metodo_pago != 'credito' THEN total ELSE 0 END) as mes 
+      FROM ventas`;
     db.get(query, [], (err, row) => {
       if (err) reject(err);
       else resolve({ hoy: row?.hoy || 0, semana: row?.semana || 0, mes: row?.mes || 0 });
@@ -1166,7 +1240,6 @@ ipcMain.handle('add-cliente', async (event, cliente) => {
   });
 });
 
-// ESTA ES LA JOYA DE LA CORONA: El Abono
 ipcMain.handle('abonar-deuda', async (event, data) => {
   return withDbReady(() => {
     return new Promise((resolve, reject) => {
@@ -1175,24 +1248,22 @@ ipcMain.handle('abonar-deuda', async (event, data) => {
       db.serialize(() => {
         db.run('BEGIN TRANSACTION');
 
-        // 1. Le bajamos la cuenta al cliente
         db.run(`UPDATE clientes SET deuda = deuda - ? WHERE id = ?`, [monto, clienteId], (err) => {
             if (err) { db.run('ROLLBACK'); return reject(err); }
         });
 
-        // 2. Registramos la entrada de dinero en la tabla de ventas pa' los reportes
-        // Le ponemos subtotal 0, pero total = monto para que no descuadre inventario
+        const metodoAbono = "Abono - " + metodoPago;
+        
         db.run(
           `INSERT INTO ventas (fecha, total, metodo_pago, subtotal, descuento, cliente_id) 
            VALUES (datetime('now', 'localtime'), ?, ?, 0, 0, ?)`,
-          [monto, metodoPago, clienteId],
+          [monto, metodoAbono, clienteId],
           function(err) {
             if (err) {
                 db.run('ROLLBACK'); 
                 return reject(err);
             }
             
-            // Listo, sellado y guardado
             db.run('COMMIT');
             resolve({ success: true, ventaId: this.lastID });
           }
@@ -1212,12 +1283,14 @@ ipcMain.handle('asignar-deuda', async (event, data) => {
   });
 });
 // ============================================
-// MANEJADORES IPC - LOGIN
+// MANEJADORES IPC - LOGIN Y SEGURIDAD
 // ============================================
 ipcMain.handle('validar-login', async (event, { user, pass }) => {
     return new Promise((resolve) => {
+        const claveEncriptada = encriptarClave(pass); // Encriptamos lo que metió el usuario
+        
         db.get("SELECT id, username, rol FROM usuarios WHERE username = ? AND password = ?", 
-        [user, pass], (err, row) => {
+        [user, claveEncriptada], (err, row) => { // Comparamos con la base de datos
             if (err) {
                 resolve({ success: false, message: "Error en la base de datos" });
             } else if (row) {
@@ -1228,6 +1301,263 @@ ipcMain.handle('validar-login', async (event, { user, pass }) => {
         });
     });
 });
+
+// NUEVA FUNCIÓN: Actualizar usuarios
+ipcMain.handle('update-credenciales', async (event, { rol, nuevoUsuario, nuevaClave }) => {
+    return withDbReady(() => new Promise((resolve, reject) => {
+        const claveEncriptada = encriptarClave(nuevaClave);
+        db.run(
+            `UPDATE usuarios SET username = ?, password = ? WHERE rol = ?`, 
+            [nuevoUsuario, claveEncriptada, rol], 
+            function(err) {
+                if (err) {
+                    // Si da error por username duplicado (UNIQUE constraint)
+                    if (err.message.includes('UNIQUE')) {
+                        resolve({ success: false, message: 'Ese nombre de usuario ya está ocupado' });
+                    } else {
+                        reject(err);
+                    }
+                } else {
+                    resolve({ success: true });
+                }
+            }
+        );
+    }));
+});
+
+// ============================================
+// MANEJADORES IPC - EXPORTAR PDF MANUAL
+// ============================================
+ipcMain.handle('exportar-todas-ventas-pdf', async (event) => {
+    const { dialog, BrowserWindow } = require('electron');
+    const fs = require('fs');
+
+    return new Promise((resolve) => {
+        // 1. ¡PRIMERO LO PRIMERO! Buscamos la tasa del BCV pa' poder calcular
+        db.get(`SELECT tasa_bcv_actual FROM configuracion WHERE id = 1`, [], (err, config) => {
+            const tasaBCV = (config && config.tasa_bcv_actual) ? config.tasa_bcv_actual : 1;
+
+            // 2. Ahora sí, nos traemos todas las ventas
+            const query = `
+                SELECT v.*, c.nombre as cliente_nombre 
+                FROM ventas v 
+                LEFT JOIN clientes c ON v.cliente_id = c.id
+                ORDER BY v.fecha DESC
+            `;
+            
+            db.all(query, [], async (err, ventas) => {
+                if (err) return resolve({ success: false, error: err.message });
+                if (!ventas || ventas.length === 0) return resolve({ success: false, empty: true });
+
+                let htmlFilas = '';
+                let gananciaTotalUSD = 0;
+                let gananciaTotalBs = 0;
+
+                ventas.forEach(venta => {
+                    const cliente = venta.cliente_nombre || 'Consumidor Final';
+                    const totalBs = parseFloat(venta.total) || 0; 
+                    const totalUSD = totalBs / tasaBCV; 
+
+                    if (venta.metodo_pago !== 'credito') {
+                        gananciaTotalUSD += totalUSD;
+                        gananciaTotalBs += totalBs;
+                    }
+
+                    htmlFilas += `
+                        <tr>
+                            <td>${venta.fecha}</td>
+                            <td>${cliente}</td>
+                            <td>${venta.metodo_pago || 'N/A'}</td>
+                            <td>$${totalUSD.toFixed(2)}</td>
+                            <td>Bs.${totalBs.toFixed(2)}</td>
+                        </tr>
+                    `;
+                });
+
+                const contenidoHTML = `
+                    <html>
+                    <head>
+                        <style>
+                            body { font-family: Arial, sans-serif; padding: 20px; }
+                            h2 { text-align: center; color: #1e293b; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+                            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                            th { background-color: #f8fafc; }
+                            .totales { margin-top: 20px; font-size: 18px; font-weight: bold; text-align: right; }
+                        </style>
+                    </head>
+                    <body>
+                        <h2>Reporte General de Ventas (Manual)</h2>
+                        <p><strong>Fecha de emisión:</strong> ${new Date().toLocaleString()}</p>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Cliente</th>
+                                    <th>Método de Pago</th>
+                                    <th>Total (USD)</th>
+                                    <th>Total (Bs)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${htmlFilas}
+                            </tbody>
+                        </table>
+                        <div class="totales">
+                            <p>Total Acumulado USD: $${gananciaTotalUSD.toFixed(2)}</p>
+                            <p>Total Acumulado Bs: Bs.${gananciaTotalBs.toFixed(2)}</p>
+                        </div>
+                    </body>
+                    </html>
+                `;
+
+                const pdfPath = await dialog.showSaveDialog({
+                    title: 'Guardar Reporte Manual de Ventas',
+                    defaultPath: `Reporte_Completo_${Date.now()}.pdf`,
+                    filters: [{ name: 'Archivos PDF', extensions: ['pdf'] }]
+                });
+
+                if (pdfPath.canceled) return resolve({ success: false, cancelado: true });
+
+                const printWindow = new BrowserWindow({ show: false });
+                await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(contenidoHTML)}`);
+                
+                try {
+                    const data = await printWindow.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
+                    fs.writeFileSync(pdfPath.filePath, data);
+                    printWindow.close();
+                    resolve({ success: true, path: pdfPath.filePath });
+                } catch (error) {
+                    printWindow.close();
+                    resolve({ success: false, error: error.message });
+                }
+            });
+        });
+    });
+});
+// ============================================
+// VENTANA OCULTA PARA PDF AUTOMÁTICO
+// ============================================
+async function verificarYExportarVentas() {
+    const limite = 500; // El número ideal de ventas para no guindar la PC
+
+    db.get("SELECT COUNT(*) as total FROM ventas", async (err, row) => {
+        if (err || !row || row.total < limite) return; // Si no ha llegado a 500, no hace nada
+
+        console.log(`¡Llegamos a ${limite} ventas! Generando PDF automático...`);
+
+        // 1. Buscamos la tasa del BCV pa' poder hacer la conversión
+        db.get(`SELECT tasa_bcv_actual FROM configuracion WHERE id = 1`, [], (err, config) => {
+            const tasaBCV = (config && config.tasa_bcv_actual) ? config.tasa_bcv_actual : 1;
+
+            // 2. Buscamos todas las ventas con el nombre del cliente
+            const query = `
+                SELECT v.*, c.nombre as cliente_nombre 
+                FROM ventas v 
+                LEFT JOIN clientes c ON v.cliente_id = c.id
+            `;
+            
+            db.all(query, [], async (err, ventas) => {
+                if (err || ventas.length === 0) return;
+
+                let htmlFilas = '';
+                let gananciaTotalUSD = 0;
+                let gananciaTotalBs = 0;
+
+                // 3. Armamos las filas y sumamos los cobres con el arreglo que hicimos
+                ventas.forEach(venta => {
+                    const cliente = venta.cliente_nombre || 'Consumidor Final';
+                    const totalBs = parseFloat(venta.total) || 0; 
+                    const totalUSD = totalBs / tasaBCV; 
+
+                    if (venta.metodo_pago !== 'credito') {
+                        gananciaTotalUSD += totalUSD;
+                        gananciaTotalBs += totalBs;
+                    }
+
+                    htmlFilas += `
+                        <tr>
+                            <td>${venta.fecha}</td>
+                            <td>${cliente}</td>
+                            <td>${venta.metodo_pago || 'N/A'}</td>
+                            <td>$${totalUSD.toFixed(2)}</td>
+                            <td>Bs.${totalBs.toFixed(2)}</td>
+                        </tr>
+                    `;
+                });
+
+                // 4. Preparamos el diseño del PDF
+                const contenidoHTML = `
+                    <html>
+                    <head>
+                        <style>
+                            body { font-family: Arial, sans-serif; padding: 20px; }
+                            h2 { text-align: center; color: #1e293b; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+                            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                            th { background-color: #f8fafc; }
+                            .totales { margin-top: 20px; font-size: 18px; font-weight: bold; text-align: right; }
+                        </style>
+                    </head>
+                    <body>
+                        <h2>Reporte de Ventas Automático (Corte de ${limite} transacciones)</h2>
+                        <p><strong>Fecha de corte:</strong> ${new Date().toLocaleString()}</p>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Cliente</th>
+                                    <th>Método de Pago</th>
+                                    <th>Total (USD)</th>
+                                    <th>Total (Bs)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${htmlFilas}
+                            </tbody>
+                        </table>
+                        <div class="totales">
+                            <p>Ganancia Total USD: $${gananciaTotalUSD.toFixed(2)}</p>
+                            <p>Ganancia Total Bs: Bs.${gananciaTotalBs.toFixed(2)}</p>
+                        </div>
+                    </body>
+                    </html>
+                `;
+
+                // 5. Creamos la carpeta si no existe en "Mis Documentos"
+                const carpetaReportes = path.join(app.getPath('documents'), 'GestorLocal_Reportes');
+                if (!fs.existsSync(carpetaReportes)) {
+                    fs.mkdirSync(carpetaReportes, { recursive: true });
+                }
+
+                // Nombre único con la fecha exacta en milisegundos
+                const nombreArchivo = `Corte_Ventas_${Date.now()}.pdf`;
+                const rutaPDF = path.join(carpetaReportes, nombreArchivo);
+
+                // 6. Generamos el PDF de forma oculta
+                const printWindow = new BrowserWindow({ show: false });
+                await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(contenidoHTML)}`);
+                
+                try {
+                    const data = await printWindow.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
+                    fs.writeFileSync(rutaPDF, data);
+                    printWindow.close();
+                    console.log(`✅ PDF guardado calladito en: ${rutaPDF}`);
+
+                    // 7. ¡La Limpieza! Borramos las ventas que acabamos de meter en el PDF
+                    const idsVentas = ventas.map(v => v.id).join(',');
+                    db.run(`DELETE FROM ventas WHERE id IN (${idsVentas})`, (err) => {
+                        if (!err) console.log('✅ Ventas borradas de la base de datos para ahorrar espacio.');
+                    });
+
+                } catch (error) {
+                    console.error("Error generando el PDF automático:", error);
+                    printWindow.close();
+                }
+            });
+        });
+    });
+}
 
 // ============================================
 // MANEJADORES IPC - CONFIGURACION

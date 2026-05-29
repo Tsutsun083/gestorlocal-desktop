@@ -143,7 +143,6 @@ function mostrarFormularioCliente() {
 // ============================================
 // MODAL: COBRAR DEUDA
 // ============================================
-// Reemplaza toda la función mostrarFormularioAbono con esto:
 function mostrarFormularioAbono(id, nombre, deudaActual) {
     const contenido = `
         <div style="background: #fee2e2; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
@@ -159,18 +158,13 @@ function mostrarFormularioAbono(id, nombre, deudaActual) {
             <select id="abono-metodo" class="form-control">
                 <option value="efectivo">Efectivo</option>
                 <option value="pago_movil">Pago Móvil / Transferencia</option>
-                <option value="punto">Punto de Venta</option>
+                <option value="tarjeta">Tarjeta</option>
+                <option value="biopago">Biopago</option>
             </select>
         </div>
-        <div class="modal-actions">
+        <div class="modal-actions" style="display:flex; justify-content: flex-end; gap:10px; margin-top: 20px;">
             <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancelar</button>
             <button class="btn btn-success" id="btn-procesar-abono">Procesar Pago</button>
-            <button class="btn btn-warning btn-sm" onclick="mostrarModalAsignarDeuda(${id}, '${nombre}')">
-                <i class="fas fa-hand-holding-usd"></i> Fiar
-            </button>
-            <button class="btn btn-success btn-sm" onclick="mostrarModalCobro(${id}, '${nombre}', ${deudaActual})">
-                 <i class="fas fa-cash-register"></i> Cobrar
-            </button>
         </div>
     `;
     const modal = crearModal(`💰 Cobrar a ${nombre}`, contenido, '400px');
@@ -186,7 +180,7 @@ function mostrarFormularioAbono(id, nombre, deudaActual) {
 
         try {
             await abonarDeudaCliente({ clienteId: id, monto, metodoPago: metodo });
-            mostrarNotificacion('¡Pago registrado!.');
+            mostrarNotificacion('¡Pago registrado!');
             modal.remove();
             loadClientes();
         } catch (err) {

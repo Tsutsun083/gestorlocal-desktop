@@ -867,60 +867,57 @@ ipcMain.handle('get-productos-stock-bajo', async () => {
 // ============================================
 ipcMain.handle('registrar-venta', async (event, ventaData) => {
   return withDbReady(() => new Promise((resolve, reject) => {
-    // 1. Agregamos clienteId aquí para extraerlo del paquete
     const { items, total, metodoPago, clienteId } = ventaData; 
     
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
-      
-      // 2. Metemos cliente_id en el INSERT
-      db.run(`INSERT INTO ventas (fecha, total, metodo_pago, cliente_id) VALUES (datetime('now', 'localtime'), ?, ?, ?)`, 
-      [total, metodoPago, clienteId || null], 
-      function(err) {
-        if (err) { db.run('ROLLBACK'); reject(err); return; }
-        const ventaId = this.lastID;
-        let pendientes = items.length;
-        let error = false;
+    db.get(`SELECT tasa_bcv_actual FROM configuracion WHERE id = 1`, (err, config) => {
+      if (err) return reject(err);
+      const tasaDelMomento = (config && config.tasa_bcv_actual) ? config.tasa_bcv_actual : 1;
+
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
         
-        items.forEach(item => {
-          const sql = `INSERT INTO venta_detalles (venta_id, producto_id, cantidad, precio_unitario, subtotal, tipo_ingreso, unidad) VALUES (?, ?, ?, ?, ?, ?, ?)`;
-          const params = [ventaId, item.producto_id, item.cantidad, item.precio_unitario, item.subtotal, item.tipo_ingreso || null, item.unidad || null];
+        db.run(`INSERT INTO ventas (fecha, total, metodo_pago, cliente_id, tasa_bcv) VALUES (datetime('now', 'localtime'), ?, ?, ?, ?)`, 
+        [total, metodoPago, clienteId || null, tasaDelMomento], 
+        function(err) {
+          if (err) { db.run('ROLLBACK'); reject(err); return; }
+          const ventaId = this.lastID;
+          let pendientes = items.length;
+          let error = false;
           
-          db.run(sql, params, function(err) {
-            if (err) error = true;
-            db.run(`UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ? AND stock_actual >= ?`, [item.cantidad, item.producto_id, item.cantidad], function(err) {
+          items.forEach(item => {
+            const sql = `INSERT INTO venta_detalles (venta_id, producto_id, cantidad, precio_unitario, subtotal, tipo_ingreso, unidad) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+            const params = [ventaId, item.producto_id, item.cantidad, item.precio_unitario, item.subtotal, item.tipo_ingreso || null, item.unidad || null];
+            
+            db.run(sql, params, function(err) {
               if (err) error = true;
-              pendientes--;
-              
-              // Cuando termina de procesar todos los productos del carrito
-              if (pendientes === 0) {
-                if (error) { 
-                    db.run('ROLLBACK'); 
-                    reject(new Error('Error en la venta')); 
-                } else { 
-                    
-                    // Revisamos si la venta fue fiada y si hay un cliente válido
-                    if (metodoPago === 'credito' && clienteId) {
-                        db.run(`UPDATE clientes SET deuda = deuda + ? WHERE id = ?`, [total, clienteId], (errDeuda) => {
-                            if (errDeuda) {
-                                console.error("Vergación, hubo un rollo sumando la deuda:", errDeuda);
-                                db.run('ROLLBACK');
-                                reject(new Error('Error actualizando deuda del cliente'));
-                            } else {
-                                // Si sumó bien la deuda, cerramos trato
-                                db.run('COMMIT'); 
-                                verificarYExportarVentas(); 
-                                resolve({ success: true, ventaId });
-                            }
-                        });
-                    } else {
-                        // Si pagó normalito (efectivo, pagomovil, etc), cerramos trato de una vez
-                        db.run('COMMIT'); 
-                        verificarYExportarVentas(); 
-                        resolve({ success: true, ventaId }); 
-                    }
+              db.run(`UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ? AND stock_actual >= ?`, [item.cantidad, item.producto_id, item.cantidad], function(err) {
+                if (err) error = true;
+                pendientes--;
+                
+                if (pendientes === 0) {
+                  if (error) { 
+                      db.run('ROLLBACK'); 
+                      reject(new Error('Error en la venta')); 
+                  } else { 
+                      if (metodoPago === 'credito' && clienteId) {
+                          db.run(`UPDATE clientes SET deuda = deuda + ? WHERE id = ?`, [total, clienteId], (errDeuda) => {
+                              if (errDeuda) {
+                                  db.run('ROLLBACK');
+                                  reject(new Error('Error actualizando deuda del cliente'));
+                              } else {
+                                  db.run('COMMIT'); 
+                                  verificarYExportarVentas(); 
+                                  resolve({ success: true, ventaId });
+                              }
+                          });
+                      } else {
+                          db.run('COMMIT'); 
+                          verificarYExportarVentas(); 
+                          resolve({ success: true, ventaId }); 
+                      }
+                  }
                 }
-              }
+              });
             });
           });
         });
@@ -1205,29 +1202,33 @@ ipcMain.handle('abonar-deuda', async (event, data) => {
     return new Promise((resolve, reject) => {
       const { clienteId, monto, metodoPago } = data;
       
-      db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
+      // ¡AQUÍ ESTÁ LA TRAMPA! Buscamos la tasa exacta en el momento del abono
+      db.get(`SELECT tasa_bcv_actual FROM configuracion WHERE id = 1`, (err, config) => {
+        if (err) return reject(err);
+        const tasaDelMomento = (config && config.tasa_bcv_actual) ? config.tasa_bcv_actual : 1;
 
-        db.run(`UPDATE clientes SET deuda = deuda - ? WHERE id = ?`, [monto, clienteId], (err) => {
-            if (err) { db.run('ROLLBACK'); return reject(err); }
-        });
-
-        const metodoAbono = "Abono - " + metodoPago;
-        
-        db.run(
-          `INSERT INTO ventas (fecha, total, metodo_pago, subtotal, descuento, cliente_id) 
-           VALUES (datetime('now', 'localtime'), ?, ?, 0, 0, ?)`,
-          [monto, metodoAbono, clienteId],
-          function(err) {
-            if (err) {
-                db.run('ROLLBACK'); 
-                return reject(err);
+        db.serialize(() => {
+          db.run('BEGIN TRANSACTION');
+          db.run(`UPDATE clientes SET deuda = deuda - ? WHERE id = ?`, [monto, clienteId], (err) => {
+              if (err) { db.run('ROLLBACK'); return reject(err); }
+          });
+          const metodoAbono = "Abono - " + metodoPago;
+          
+          db.run(
+            `INSERT INTO ventas (fecha, total, metodo_pago, subtotal, descuento, cliente_id, tasa_bcv) 
+             VALUES (datetime('now', 'localtime'), ?, ?, 0, 0, ?, ?)`,
+            [monto, metodoAbono, clienteId, tasaDelMomento],
+            function(err) {
+              if (err) {
+                  db.run('ROLLBACK'); 
+                  return reject(err);
+              }
+              
+              db.run('COMMIT');
+              resolve({ success: true, ventaId: this.lastID });
             }
-            
-            db.run('COMMIT');
-            resolve({ success: true, ventaId: this.lastID });
-          }
-        );
+          );
+        });
       });
     });
   });
@@ -1333,7 +1334,8 @@ ipcMain.handle('exportar-todas-ventas-pdf', async (event) => {
                 ventas.forEach(venta => {
                     const cliente = venta.cliente_nombre || 'Consumidor Final';
                     const totalBs = parseFloat(venta.total) || 0; 
-                    const totalUSD = totalBs / tasaBCV; 
+                    const tasaUsar = venta.tasa_bcv || tasaBCV;
+                    const totalUSD = totalBs / tasaUsar; 
 
                     if (venta.metodo_pago !== 'credito') {
                         gananciaTotalUSD += totalUSD;
@@ -1445,7 +1447,8 @@ async function verificarYExportarVentas() {
                 ventas.forEach(venta => {
                     const cliente = venta.cliente_nombre || 'Consumidor Final';
                     const totalBs = parseFloat(venta.total) || 0; 
-                    const totalUSD = totalBs / tasaBCV; 
+                    const tasaUsar = venta.tasa_bcv || tasaBCV;
+                    const totalUSD = totalBs / tasaUsar; 
 
                     if (venta.metodo_pago !== 'credito') {
                         gananciaTotalUSD += totalUSD;

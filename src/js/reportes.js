@@ -114,13 +114,15 @@ async function renderizarTablaHistorial() {
         }
 
         tbody.innerHTML = ventas.map(v => {
-            const montoBS = v.total / configuracion.tasa_bcv;
+            const tasaVenta = v.tasa_bcv || configuracion.tasa_bcv;
+            const montoUSD = v.total / tasaVenta;
+            
             return `
                 <tr>
                     <td>${new Date(v.fecha).toLocaleString()}</td>
                     <td><span class="stock-badge stock-normal">${v.metodo_pago}</span></td>
                     <td style="font-weight: bold; color: #059669;">${v.total.toFixed(2)} Bs.</td>
-                    <td style="color: #64748b;">${montoBS.toLocaleString('es-VE')} $</td>
+                    <td style="color: #64748b;">${montoUSD.toLocaleString('es-VE', {minimumFractionDigits: 2, maximumFractionDigits: 2})} $</td>
                     <td>${v.cliente_nombre || 'Consumidor Final'}</td>
                 </tr>
             `;

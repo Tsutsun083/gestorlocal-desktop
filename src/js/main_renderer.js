@@ -192,7 +192,7 @@ function setupNavigation() {
                 case 'compras': loadCompras(); break;
                 case 'reportes': loadReportes(); break;
                 case 'clientes': loadClientes(); break;
-                case 'config': loadConfig(); break; // Se llama al config unificado
+                case 'config': loadConfig(); break;
                 default: loadPlaceholder(page, titles[page]);
             }
         });
@@ -230,6 +230,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     await mostrarPantallaLogin();
+
+    // ✅ Ya no va res aquí
 
     const tema = configuracion.tema || 'claro';
     const colorPrimario = configuracion.color_primario || '#2563eb';

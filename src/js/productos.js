@@ -308,7 +308,7 @@ export async function mostrarFormularioProducto(producto = null) {
                 <input type="number" id="producto-margen" min="0" max="1000" 
                        value="${producto?.margen_sugerido || 30}" class="form-control">
             </div>
-            <div class="preview-price" id="preview-auto" style="background:#f0f9ff; padding:10px; border-radius:4px;">
+            <div class="preview-price" id="preview-auto" style="padding:10px; border-radius:4px;">
                 Precio estimado: <strong>0 Bs</strong>
             </div>
         </div>

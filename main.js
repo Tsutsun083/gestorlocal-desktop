@@ -49,241 +49,222 @@ function initDatabase() {
 
 function crearTablas() {
   return new Promise((resolve, reject) => {
+    // 🔥 ACTIVAR FOREIGN KEYS (importante para integridad referencial)
+    db.run("PRAGMA foreign_keys = ON");
+
     db.serialize(() => {
 
-      //Creamos la tabla de usuarios
+      // ==================================================
+      // USUARIOS
+      // ==================================================
       db.run(`CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
-        password TEXT,
-        rol TEXT
-    )`, (err) => {
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        rol TEXT NOT NULL CHECK(rol IN ('admin', 'vendedor'))
+      )`, (err) => {
         if (err) return reject(err);
 
-       // Una vez creada, verificamos si está vacía para meter los usuarios iniciales
+        // Insertar usuarios iniciales si la tabla está vacía
         db.get("SELECT COUNT(*) as count FROM usuarios", (err, row) => {
           if (row && row.count === 0) {
-              const stmt = db.prepare("INSERT INTO usuarios (username, password, rol) VALUES (?, ?, ?)");
-              
-              // ¡Aquí encriptamos las claves iniciales!
-              const adminClave = encriptarClave("admin123");
-              const vendedorClave = encriptarClave("ventas123");
-              
-              stmt.run("admin", adminClave, "admin"); // El jefe
-              stmt.run("vendedor", vendedorClave, "vendedor"); // El trabajador
-              stmt.finalize();
-              console.log("✅ Usuarios iniciales creados y encriptados");
+            const stmt = db.prepare("INSERT INTO usuarios (username, password, rol) VALUES (?, ?, ?)");
+            const adminClave = encriptarClave("admin123");
+            const vendedorClave = encriptarClave("ventas123");
+            stmt.run("admin", adminClave, "admin");
+            stmt.run("vendedor", vendedorClave, "vendedor");
+            stmt.finalize();
+            console.log("✅ Usuarios iniciales creados y encriptados");
           }
-      });
-    });
-    // Categorías
-    db.run(`
-        CREATE TABLE IF NOT EXISTS categorias (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          nombre TEXT NOT NULL UNIQUE,
-          icono TEXT DEFAULT '📦',
-          color TEXT DEFAULT '#667eea',
-          orden INTEGER DEFAULT 0,
-          activa INTEGER DEFAULT 1
-        )
-      `);
-
-      // Productos
-      db.run(`
-        CREATE TABLE IF NOT EXISTS productos (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          codigo TEXT UNIQUE,
-          nombre TEXT NOT NULL,
-          descripcion TEXT,
-          categoria_id INTEGER,
-          precio_compra_usd REAL,
-          margen_sugerido REAL DEFAULT 30,
-          precio_base_usd REAL,
-          precio_manual_bs REAL,
-          usar_calculo_automatico INTEGER DEFAULT 1,
-          stock_actual REAL DEFAULT 0,
-          stock_minimo REAL DEFAULT 5,
-          unidad_medida TEXT DEFAULT 'unidad',
-          activo INTEGER DEFAULT 1,
-          marca TEXT,
-          proveedor_id INTEGER,
-          fecha_vencimiento DATE,
-          FOREIGN KEY (categoria_id) REFERENCES categorias(id),
-          FOREIGN KEY (proveedor_id) REFERENCES proveedores(id)
-        )
-      `);
-
-      // Ventas
-      db.run(`
-        CREATE TABLE IF NOT EXISTS ventas (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
-          total REAL,
-          metodo_pago TEXT,
-          subtotal REAL,
-          descuento REAL DEFAULT 0
-        )
-      `);
-
-      // Detalles de venta
-      db.run(`
-        CREATE TABLE IF NOT EXISTS venta_detalles (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          venta_id INTEGER,
-          producto_id INTEGER,
-          cantidad REAL NOT NULL,
-          precio_unitario REAL NOT NULL,
-          subtotal REAL NOT NULL,
-          tipo_ingreso TEXT,
-          unidad TEXT,
-          FOREIGN KEY (venta_id) REFERENCES ventas(id),
-          FOREIGN KEY (producto_id) REFERENCES productos(id)
-        )
-      `);
-
-      // Proveedores
-      db.run(`
-        CREATE TABLE IF NOT EXISTS proveedores (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          rubro TEXT,
-          nombre_empresa TEXT NOT NULL,
-          nombre_contacto TEXT,
-          telefono TEXT,
-          direccion TEXT,
-          fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      // Agregar columna tipo_ingreso si no existe (por si acaso)
-      db.all("PRAGMA table_info(venta_detalles)", (err, columns) => {
-        if (!err && columns) {
-          const columnNames = columns.map(c => c.name);
-          if (!columnNames.includes('tipo_ingreso')) {
-            db.run("ALTER TABLE venta_detalles ADD COLUMN tipo_ingreso TEXT");
-            console.log('✅ Columna tipo_ingreso agregada a venta_detalles');
-          }
-        }
-      });
-      // Tabla de clientes
-      db.run(`
-         CREATE TABLE IF NOT EXISTS clientes (
-           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          nombre TEXT NOT NULL,
-          ci TEXT UNIQUE,
-          telefono TEXT,
-          fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
-          deuda REAL DEFAULT 0
-         )
-      `);
-        // Agregar columna cliente_id a ventas si no existe
-      db.all("PRAGMA table_info(ventas)", (err, columns) => {
-        if (!err && columns) {
-          const hasClienteId = columns.some(c => c.name === 'cliente_id');
-        if (!hasClienteId) {
-          db.run("ALTER TABLE ventas ADD COLUMN cliente_id INTEGER REFERENCES clientes(id)");
-          console.log('✅ Columna cliente_id agregada a la tabla ventas');
-          }
-        }
+        });
       });
 
-      // Órdenes de compra
-      db.run(`
-        CREATE TABLE IF NOT EXISTS ordenes_compra (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          proveedor_id INTEGER,
-          fecha_orden DATETIME DEFAULT CURRENT_TIMESTAMP,
-          fecha_recibido DATETIME,
-          estado TEXT DEFAULT 'pendiente' CHECK(estado IN ('pendiente', 'recibido', 'cancelado')),
-          total REAL,
-          observaciones TEXT,
-          FOREIGN KEY (proveedor_id) REFERENCES proveedores(id)
-        )
-      `);
+      // ==================================================
+      // CATEGORÍAS
+      // ==================================================
+      db.run(`CREATE TABLE IF NOT EXISTS categorias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL UNIQUE,
+        icono TEXT DEFAULT '📦',
+        color TEXT DEFAULT '#667eea',
+        orden INTEGER DEFAULT 0,
+        activa INTEGER DEFAULT 1
+      )`);
 
-      // Detalles de compra
-      db.run(`
-        CREATE TABLE IF NOT EXISTS detalle_compra (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          orden_id INTEGER,
-          producto_id INTEGER,
-          cantidad REAL NOT NULL,
-          precio_unitario REAL NOT NULL,
-          subtotal REAL NOT NULL,
-          FOREIGN KEY (orden_id) REFERENCES ordenes_compra(id),
-          FOREIGN KEY (producto_id) REFERENCES productos(id)
-        )
-      `);
+      // ==================================================
+      // PROVEEDORES (antes de productos por la FK)
+      // ==================================================
+      db.run(`CREATE TABLE IF NOT EXISTS proveedores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rubro TEXT,
+        nombre_empresa TEXT NOT NULL,
+        nombre_contacto TEXT,
+        telefono TEXT,
+        direccion TEXT,
+        fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
 
-            // Tabla de configuración
-      db.run(`
-        CREATE TABLE IF NOT EXISTS configuracion (
-          id INTEGER PRIMARY KEY CHECK (id = 1),
-          nombre_negocio TEXT DEFAULT 'Mi Negocio',
-          tasa_bcv_actual REAL DEFAULT 50.00,
-          fecha_actualizacion_tasa DATETIME,
-          redondear_precios INTEGER DEFAULT 1,
-          actualizado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
-          rif TEXT,
-          pago_movil_info TEXT,
-          tema TEXT DEFAULT 'claro',
-          color_primario TEXT DEFAULT '#2563eb'
-        )
-      `, function(err) {
+      // ==================================================
+      // PRODUCTOS
+      // ==================================================
+      db.run(`CREATE TABLE IF NOT EXISTS productos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo TEXT UNIQUE,
+        nombre TEXT NOT NULL,
+        descripcion TEXT,
+        categoria_id INTEGER,
+        precio_compra_usd REAL,
+        margen_sugerido REAL DEFAULT 30,
+        precio_base_usd REAL,
+        precio_manual_bs REAL,
+        usar_calculo_automatico INTEGER DEFAULT 1,
+        stock_actual REAL DEFAULT 0,
+        stock_minimo REAL DEFAULT 5,
+        unidad_medida TEXT DEFAULT 'unidad' CHECK(unidad_medida IN ('unidad','kg','g','l','ml')),
+        activo INTEGER DEFAULT 1,
+        marca TEXT,
+        proveedor_id INTEGER,
+        fecha_vencimiento DATE,
+        FOREIGN KEY (categoria_id) REFERENCES categorias(id),
+        FOREIGN KEY (proveedor_id) REFERENCES proveedores(id)
+      )`);
+
+      // ==================================================
+      // CLIENTES (antes de ventas por FK cliente_id)
+      // ==================================================
+      db.run(`CREATE TABLE IF NOT EXISTS clientes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        ci TEXT UNIQUE,
+        telefono TEXT,
+        fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deuda REAL DEFAULT 0
+      )`);
+
+      // ==================================================
+      // VENTAS (incluye cliente_id directo en el CREATE)
+      // ==================================================
+      db.run(`CREATE TABLE IF NOT EXISTS ventas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+        total REAL,
+        metodo_pago TEXT,
+        subtotal REAL,
+        descuento REAL DEFAULT 0,
+        cliente_id INTEGER REFERENCES clientes(id)
+      )`);
+
+      // ==================================================
+      // DETALLES DE VENTA
+      // ==================================================
+      db.run(`CREATE TABLE IF NOT EXISTS venta_detalles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        venta_id INTEGER,
+        producto_id INTEGER,
+        cantidad REAL NOT NULL,
+        precio_unitario REAL NOT NULL,
+        subtotal REAL NOT NULL,
+        tipo_ingreso TEXT,
+        unidad TEXT,
+        FOREIGN KEY (venta_id) REFERENCES ventas(id),
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+      )`);
+
+      // ==================================================
+      // ÓRDENES DE COMPRA Y DETALLES
+      // ==================================================
+      db.run(`CREATE TABLE IF NOT EXISTS ordenes_compra (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proveedor_id INTEGER,
+        fecha_orden DATETIME DEFAULT CURRENT_TIMESTAMP,
+        fecha_recibido DATETIME,
+        estado TEXT DEFAULT 'pendiente' CHECK(estado IN ('pendiente','recibido','cancelado')),
+        total REAL,
+        observaciones TEXT,
+        FOREIGN KEY (proveedor_id) REFERENCES proveedores(id)
+      )`);
+
+      db.run(`CREATE TABLE IF NOT EXISTS detalle_compra (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        orden_id INTEGER,
+        producto_id INTEGER,
+        cantidad REAL NOT NULL,
+        precio_unitario REAL NOT NULL,
+        subtotal REAL NOT NULL,
+        FOREIGN KEY (orden_id) REFERENCES ordenes_compra(id),
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+      )`);
+
+      // ==================================================
+      // CONFIGURACIÓN
+      // ==================================================
+      db.run(`CREATE TABLE IF NOT EXISTS configuracion (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        nombre_negocio TEXT DEFAULT 'Mi Negocio',
+        tasa_bcv_actual REAL DEFAULT 50.00,
+        fecha_actualizacion_tasa DATETIME,
+        redondear_precios INTEGER DEFAULT 1,
+        actualizado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+        rif TEXT,
+        pago_movil_info TEXT,
+        tema TEXT DEFAULT 'claro',
+        color_primario TEXT DEFAULT '#2563eb'
+      )`, function(err) {
         if (!err) {
-          // Verificar si ya existe una fila; si no, insertar con los valores por defecto
           db.get(`SELECT * FROM configuracion WHERE id = 1`, (err, row) => {
             if (!row) {
-              db.run(`
-                INSERT INTO configuracion 
+              db.run(`INSERT INTO configuracion 
                 (id, nombre_negocio, tasa_bcv_actual, rif, pago_movil_info, tema, color_primario) 
-                VALUES (1, 'Mi Negocio', 50.00, '', '', 'claro', '#2563eb')
-              `, function(err) {
-                if (err) console.error('Error insertando configuración inicial:', err);
-                else console.log('✅ Configuración inicial insertada');
-              });
-            } else {
-              // Si la fila ya existe pero le faltan columnas, agregarlas (seguridad adicional)
-              // (opcional, ya lo harán los ALTER TABLE después)
+                VALUES (1, 'Mi Negocio', 50.00, '', '', 'claro', '#2563eb')`);
             }
           });
         }
       });
 
-      // Después de crear la tabla, asegurar que todas las columnas existan (por si la tabla era antigua)
+      // ==================================================
+      // MIGRACIONES (por si la BD es antigua)
+      // ==================================================
       db.all("PRAGMA table_info(configuracion)", (err, columns) => {
         if (!err && columns) {
-          const columnNames = columns.map(c => c.name);
-          const nuevasColumnas = [
+          const cols = columns.map(c => c.name);
+          const migraciones = [
             { name: 'rif', sql: "ALTER TABLE configuracion ADD COLUMN rif TEXT" },
             { name: 'pago_movil_info', sql: "ALTER TABLE configuracion ADD COLUMN pago_movil_info TEXT" },
             { name: 'tema', sql: "ALTER TABLE configuracion ADD COLUMN tema TEXT DEFAULT 'claro'" },
             { name: 'color_primario', sql: "ALTER TABLE configuracion ADD COLUMN color_primario TEXT DEFAULT '#2563eb'" }
           ];
-          nuevasColumnas.forEach(col => {
-            if (!columnNames.includes(col.name)) {
+          migraciones.forEach(col => {
+            if (!cols.includes(col.name)) {
               db.run(col.sql, (err) => {
-                if (err) console.error(`Error agregando columna ${col.name}:`, err);
-                else console.log(`✅ Columna ${col.name} agregada a configuracion`);
+                if (!err) console.log(`✅ Columna ${col.name} agregada a configuracion`);
               });
             }
           });
         }
       });
 
-      // FTS5 para búsqueda avanzada
-      db.run(`
-        CREATE VIRTUAL TABLE IF NOT EXISTS productos_fts USING fts5(
-          nombre, 
-          descripcion,
-          content=productos,
-          content_rowid=id
-        )
-      `, function(err) {
+      // ==================================================
+      // BÚSQUEDA AVANZADA FTS5
+      // ==================================================
+      db.run(`CREATE VIRTUAL TABLE IF NOT EXISTS productos_fts USING fts5(
+        nombre, 
+        descripcion,
+        content=productos,
+        content_rowid=id
+      )`, function(err) {
         if (!err) {
-          db.run(`INSERT INTO productos_fts (rowid, nombre, descripcion) SELECT id, nombre, descripcion FROM productos`);
+          // 🔥 SOLO poblar si FTS está vacío (evita duplicados en cada arranque)
+          db.get(`SELECT COUNT(*) as total FROM productos_fts`, (err, row) => {
+            if (!err && row.total === 0) {
+              db.run(`INSERT INTO productos_fts (rowid, nombre, descripcion) 
+                      SELECT id, nombre, descripcion FROM productos`);
+              console.log("✅ FTS5 poblado inicialmente");
+            }
+          });
         }
       });
 
-      // Triggers FTS5
+      // Triggers FTS5 (mantener sincronizado)
       db.run(`CREATE TRIGGER IF NOT EXISTS productos_ai AFTER INSERT ON productos BEGIN
         INSERT INTO productos_fts (rowid, nombre, descripcion) VALUES (new.id, new.nombre, new.descripcion);
       END;`);
@@ -295,180 +276,164 @@ function crearTablas() {
         INSERT INTO productos_fts (rowid, nombre, descripcion) VALUES (new.id, new.nombre, new.descripcion);
       END;`);
 
+      // ==================================================
+      // AUDITORÍA: tabla temporal + tabla logs
+      // ==================================================
+      db.run("CREATE TABLE IF NOT EXISTS usuario_actual (id INTEGER PRIMARY KEY)");
 
-      db.run(`
-            CREATE TABLE IF NOT EXISTS logs_auditoria (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              usuario TEXT,
-              fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
-              tabla TEXT NOT NULL,
-              registro_id INTEGER NOT NULL,
-              accion TEXT NOT NULL,
-              campo TEXT,
-              nombre_producto TEXT,
-              nombre_cliente TEXT,
-              valor_anterior TEXT,
-              valor_nuevo TEXT
-            )
-          `);
+      db.run(`CREATE TABLE IF NOT EXISTS logs_auditoria (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario INTEGER,                                    -- 🔥 INTEGER, no TEXT
+        fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+        tabla TEXT NOT NULL,
+        registro_id INTEGER NOT NULL,
+        accion TEXT NOT NULL,
+        campo TEXT,
+        nombre_producto TEXT,
+        nombre_cliente TEXT,
+        valor_anterior TEXT,
+        valor_nuevo TEXT
+      )`);
 
-          
-     // Trigger para stock_actual
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_productos_stock_update
-        AFTER UPDATE OF stock_actual ON productos
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
-          VALUES ('sistema', 'productos', NEW.id, 'UPDATE', 'stock_actual', OLD.stock_actual, NEW.stock_actual, NEW.nombre);
-        END
-      `);
+      // Índices para auditoría (mejora consultas por fecha/usuario/tabla)
+      db.run(`CREATE INDEX IF NOT EXISTS idx_logs_fecha ON logs_auditoria(fecha)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_logs_usuario ON logs_auditoria(usuario)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_logs_tabla ON logs_auditoria(tabla)`);
 
-      // Trigger para precio_base_usd
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_productos_precio_usd_update
-        AFTER UPDATE OF precio_base_usd ON productos
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
-          VALUES ('sistema', 'productos', NEW.id, 'UPDATE', 'precio_base_usd', OLD.precio_base_usd, NEW.precio_base_usd, NEW.nombre);
-        END
-      `);
+      // ==================================================
+      // TRIGGERS DE AUDITORÍA (sin prefijo "temp.")
+      // ==================================================
 
-      // Trigger para precio_manual_bs
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_productos_precio_bs_update
-        AFTER UPDATE OF precio_manual_bs ON productos
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
-          VALUES ('sistema', 'productos', NEW.id, 'UPDATE', 'precio_manual_bs', OLD.precio_manual_bs, NEW.precio_manual_bs, NEW.nombre);
-        END
-      `);
+      // Productos
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_productos_stock_update
+      AFTER UPDATE OF stock_actual ON productos
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'productos', NEW.id, 'UPDATE', 'stock_actual', OLD.stock_actual, NEW.stock_actual, NEW.nombre);
+      END`);
 
-      // Trigger para activo
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_productos_activo_update
-        AFTER UPDATE OF activo ON productos
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
-          VALUES ('sistema', 'productos', NEW.id, 'UPDATE', 'activo', OLD.activo, NEW.activo, NEW.nombre);
-        END
-      `);
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_productos_precio_usd_update
+      AFTER UPDATE OF precio_base_usd ON productos
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'productos', NEW.id, 'UPDATE', 'precio_base_usd', OLD.precio_base_usd, NEW.precio_base_usd, NEW.nombre);
+      END`);
 
-      // Trigger para proveedor_id
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_productos_proveedor_update
-        AFTER UPDATE OF proveedor_id ON productos
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
-          VALUES ('sistema', 'productos', NEW.id, 'UPDATE', 'proveedor_id', OLD.proveedor_id, NEW.proveedor_id, NEW.nombre);
-        END
-      `);
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_productos_precio_bs_update
+      AFTER UPDATE OF precio_manual_bs ON productos
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'productos', NEW.id, 'UPDATE', 'precio_manual_bs', OLD.precio_manual_bs, NEW.precio_manual_bs, NEW.nombre);
+      END`);
+
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_productos_activo_update
+      AFTER UPDATE OF activo ON productos
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'productos', NEW.id, 'UPDATE', 'activo', OLD.activo, NEW.activo, NEW.nombre);
+      END`);
+
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_productos_proveedor_update
+      AFTER UPDATE OF proveedor_id ON productos
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_producto)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'productos', NEW.id, 'UPDATE', 'proveedor_id', OLD.proveedor_id, NEW.proveedor_id, NEW.nombre);
+      END`);
 
       // Clientes
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_clientes_deuda_update
-        AFTER UPDATE OF deuda ON clientes
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_cliente)
-          VALUES ('sistema', 'clientes', NEW.id, 'UPDATE', 'deuda', OLD.deuda, NEW.deuda, NEW.nombre);
-        END
-      `);
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_clientes_deuda_update
+      AFTER UPDATE OF deuda ON clientes
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_cliente)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'clientes', NEW.id, 'UPDATE', 'deuda', OLD.deuda, NEW.deuda, NEW.nombre);
+      END`);
 
-      // Trigger para nombre
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_clientes_nombre_update
-        AFTER UPDATE OF nombre ON clientes
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_cliente)
-          VALUES ('sistema', 'clientes', NEW.id, 'UPDATE', 'nombre', OLD.nombre, NEW.nombre, NEW.nombre);
-        END
-      `);
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_clientes_nombre_update
+      AFTER UPDATE OF nombre ON clientes
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_cliente)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'clientes', NEW.id, 'UPDATE', 'nombre', OLD.nombre, NEW.nombre, NEW.nombre);
+      END`);
 
-      // Trigger para ci
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_clientes_ci_update
-        AFTER UPDATE OF ci ON clientes
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_cliente)
-          VALUES ('sistema', 'clientes', NEW.id, 'UPDATE', 'ci', OLD.ci, NEW.ci, NEW.nombre);
-        END
-      `);
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_clientes_ci_update
+      AFTER UPDATE OF ci ON clientes
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_cliente)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'clientes', NEW.id, 'UPDATE', 'ci', OLD.ci, NEW.ci, NEW.nombre);
+      END`);
 
-      // Trigger para telefono
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_clientes_telefono_update
-        AFTER UPDATE OF telefono ON clientes
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_cliente)
-          VALUES ('sistema', 'clientes', NEW.id, 'UPDATE', 'telefono', OLD.telefono, NEW.telefono, NEW.nombre);
-        END
-      `);
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_clientes_telefono_update
+      AFTER UPDATE OF telefono ON clientes
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo, nombre_cliente)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'clientes', NEW.id, 'UPDATE', 'telefono', OLD.telefono, NEW.telefono, NEW.nombre);
+      END`);
 
       // Órdenes de compra
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_ordenes_estado_update
-        AFTER UPDATE OF estado ON ordenes_compra
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo)
-          VALUES ('sistema', 'ordenes_compra', NEW.id, 'UPDATE', 'estado', OLD.estado, NEW.estado);
-        END
-      `);
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_ordenes_estado_update
+      AFTER UPDATE OF estado ON ordenes_compra
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'ordenes_compra', NEW.id, 'UPDATE', 'estado', OLD.estado, NEW.estado);
+      END`);
 
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_ordenes_total_update
-        AFTER UPDATE OF total ON ordenes_compra
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo)
-          VALUES ('sistema', 'ordenes_compra', NEW.id, 'UPDATE', 'total', OLD.total, NEW.total);
-        END
-      `);
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_ordenes_total_update
+      AFTER UPDATE OF total ON ordenes_compra
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'ordenes_compra', NEW.id, 'UPDATE', 'total', OLD.total, NEW.total);
+      END`);
 
       // Configuración (tasa BCV)
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_configuracion_tasa_update
-        AFTER UPDATE OF tasa_bcv_actual ON configuracion
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo)
-          VALUES ('sistema', 'configuracion', NEW.id, 'UPDATE', 'tasa_bcv_actual', OLD.tasa_bcv_actual, NEW.tasa_bcv_actual);
-        END
-      `);
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_configuracion_tasa_update
+      AFTER UPDATE OF tasa_bcv_actual ON configuracion
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'configuracion', NEW.id, 'UPDATE', 'tasa_bcv_actual', OLD.tasa_bcv_actual, NEW.tasa_bcv_actual);
+      END`);
 
       // Usuarios
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_usuarios_insert
-        AFTER INSERT ON usuarios
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_nuevo)
-          VALUES ('sistema', 'usuarios', NEW.id, 'INSERT', 'rol', NEW.rol);
-        END
-      `);
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_usuarios_insert
+      AFTER INSERT ON usuarios
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_nuevo)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'usuarios', NEW.id, 'INSERT', 'rol', NEW.rol);
+      END`);
 
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_usuarios_delete
-        AFTER DELETE ON usuarios
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior)
-          VALUES ('sistema', 'usuarios', OLD.id, 'DELETE', 'rol', OLD.rol);
-        END
-      `);
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_usuarios_delete
+      AFTER DELETE ON usuarios
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'usuarios', OLD.id, 'DELETE', 'rol', OLD.rol);
+      END`);
 
-      db.run(`
-        CREATE TRIGGER IF NOT EXISTS tr_usuarios_rol_update
-        AFTER UPDATE OF rol ON usuarios
-        BEGIN
-          INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo)
-          VALUES ('sistema', 'usuarios', NEW.id, 'UPDATE', 'rol', OLD.rol, NEW.rol);
-        END
-      `);
+      db.run(`CREATE TRIGGER IF NOT EXISTS tr_usuarios_rol_update
+      AFTER UPDATE OF rol ON usuarios
+      BEGIN
+        INSERT INTO logs_auditoria (usuario, tabla, registro_id, accion, campo, valor_anterior, valor_nuevo)
+        VALUES (COALESCE((SELECT id FROM usuario_actual LIMIT 1), 0), 'usuarios', NEW.id, 'UPDATE', 'rol', OLD.rol, NEW.rol);
+      END`);
 
-      // Limpiar logs de más de 90 días 
+      // ==================================================
+      // ÍNDICES ADICIONALES (rendimiento)
+      // ==================================================
+      db.run(`CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas(fecha)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_venta_det_producto ON venta_detalles(producto_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_productos_nombre ON productos(nombre)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_productos_categoria ON productos(categoria_id)`);
+    // ==================================================
+      // LIMPIEZA DE LOGS ANTIGUOS (más de 180 días)
+      // ==================================================
       const fechaLimite = new Date();
       fechaLimite.setDate(fechaLimite.getDate() - 180);
       db.run(`DELETE FROM logs_auditoria WHERE fecha < ?`, [fechaLimite.toISOString()], (err) => {
         if (err) console.error('Error limpiando logs antiguos:', err);
-        else console.log('🗑️ Logs antiguos eliminados (>90 días)');
+        else console.log('🗑️ Logs antiguos eliminados (>180 días)');
       });
 
-      // Categorías por defecto
+      // ==================================================
+      // CATEGORÍAS POR DEFECTO
+      // ==================================================
       const categoriasDefault = [
         ['Víveres', '🍚', '#2563eb', 1],
         ['Charcutería y Lácteos', '🧀', '#059669', 2],
@@ -478,29 +443,24 @@ function crearTablas() {
         ['Proteínas y Frescos', '🥩', '#0891b2', 6],
         ['Papelería', '📄', '#6b7280', 7],
         ['Panadería', '🍞', '#b45309', 8],
-        ['Otros', '📦', '#4b5563', 9]
+        ['Otros', '📦', '#4b5563', 9],
+        ['Hortalizas', '🥬', '#4ade80', 10],
+        ['Tabaco', '🚬', '#f97316', 11],
+        ['Agua y Hielo', '💧', '#38bdf8', 12],
+        ['Helados', '🍦', '#facc15', 13],
+        ['Condimentos', '🧂', '#a855f7', 14],
+        ['Enlatados', '🥫', '#6b7280', 15],
+        ['Ferretería', '🔧', '#fef08a', 16],
+        ['Quincallería', '🔩', '#9ca3af', 17]
       ];
-      
-      const stmt = db.prepare(`INSERT OR IGNORE INTO categorias (nombre, icono, color, orden) VALUES (?, ?, ?, ?)`);
-      categoriasDefault.forEach(cat => stmt.run(cat));
-      stmt.finalize();
 
-              // Nuevas categorías solicitadas
-        const nuevasCategorias = [
-          ['Hortalizas', '🥬', '#4ade80', 10],
-          ['Tabaco', '🚬', '#f97316', 11],
-          ['Agua y Hielo', '💧', '#38bdf8', 12],
-          ['Helados', '🍦', '#facc15', 13],
-          ['Condimentos', '🧂', '#a855f7', 14],
-          ['Enlatados', '🥫', '#6b7280', 15],
-          ['Ferretería', '🔧', '#fef08a', 16],
-          ['Quincallería', '🔩', '#9ca3af', 17]
-        ];
+      const stmtCategorias = db.prepare(`INSERT OR IGNORE INTO categorias (nombre, icono, color, orden) VALUES (?, ?, ?, ?)`);
+      categoriasDefault.forEach(cat => stmtCategorias.run(cat));
+      stmtCategorias.finalize();
 
-        const stmtNuevas = db.prepare(`INSERT OR IGNORE INTO categorias (nombre, icono, color, orden) VALUES (?, ?, ?, ?)`);
-        nuevasCategorias.forEach(cat => stmtNuevas.run(cat));
-        stmtNuevas.finalize();
-      
+      // ==================================================
+      // FINALIZAR CREACIÓN DE TABLAS
+      // ==================================================
       resolve();
     });
   });
@@ -1300,6 +1260,23 @@ ipcMain.handle('validar-login', async (event, { user, pass }) => {
             }
         });
     });
+});
+
+ipcMain.handle('set-usuario-actual', async (event, usuarioId) => {
+  return withDbReady(() => {
+    return new Promise((resolve, reject) => {
+      // Limpiar tabla e insertar el nuevo usuario
+      db.run("DELETE FROM temp.usuario_actual", (err) => {
+        if (err) reject(err);
+        else {
+          db.run("INSERT INTO temp.usuario_actual (id) VALUES (?)", [usuarioId], (err) => {
+            if (err) reject(err);
+            else resolve({ success: true });
+          });
+        }
+      });
+    });
+  });
 });
 
 // NUEVA FUNCIÓN: Actualizar usuarios

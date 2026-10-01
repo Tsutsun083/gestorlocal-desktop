@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
    // Usuarios
     validarLogin: (datos) => ipcRenderer.invoke('validar-login', datos),
     updateCredenciales: (datos) => ipcRenderer.invoke('update-credenciales', datos), 
+    setUsuarioActual: (usuarioId) => ipcRenderer.invoke('set-usuario-actual', usuarioId),
 
     // Exportar PDF
     exportarTodasVentasPDF: () => ipcRenderer.invoke('exportar-todas-ventas-pdf'),

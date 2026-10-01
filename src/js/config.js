@@ -361,7 +361,7 @@ export function aplicarTemaYColor(tema, colorPrimario) {
             --sidebar-active: #1e3a8a;
         }
         
-        /* Aplicación base */
+        /* Aplicación base (igual que antes) */
         body {
             background-color: var(--bg-color);
             color: var(--text-color);
@@ -398,12 +398,10 @@ export function aplicarTemaYColor(tema, colorPrimario) {
             border-color: var(--border-color) !important;
         }
         
-        /* El div que modificaste en ventas (con estilo en línea) también usará la variable */
         .ventas-container > div[style*="background"] {
             background-color: var(--surface-color) !important;
         }
         
-        /* Tablas */
         .productos-table, .productos-table th, .productos-table td,
         .reportes-table, .reportes-table th, .reportes-table td {
             background-color: var(--surface-color) !important;
@@ -411,7 +409,6 @@ export function aplicarTemaYColor(tema, colorPrimario) {
             border-color: var(--border-color) !important;
         }
         
-        /* Formularios e inputs */
         .filtros-productos input, .filtros-productos select,
         .form-control, input:not([type="color"]), select, textarea {
             background-color: var(--input-bg) !important;
@@ -419,14 +416,15 @@ export function aplicarTemaYColor(tema, colorPrimario) {
             border-color: var(--border-color) !important;
         }
         
-        /* Botones secundarios */
         .btn-secondary, .btn-outline {
-            background-color: #334155 !important;
-            color: #e2e8f0 !important;
-            border-color: #475569 !important;
+            background-color: var(--color-primario) !important;
+            color: white !important;
+            border-color: var(--color-primario) !important;
+        }
+        .btn-secondary:hover, .btn-outline:hover {
+            filter: brightness(0.9);
         }
         
-        /* Textos */
         .card-content h3, .card-content .card-value, .card-content small,
         .dashboard-card .card-content h3, .dashboard-card .card-value,
         .cliente-info span, .cliente-info strong,
@@ -435,7 +433,6 @@ export function aplicarTemaYColor(tema, colorPrimario) {
             color: var(--text-color) !important;
         }
         
-        /* Ajustes de acciones rápidas */
         .action-btn {
             background: var(--surface-color) !important;
             border-color: var(--border-color) !important;
@@ -445,7 +442,6 @@ export function aplicarTemaYColor(tema, colorPrimario) {
             background: var(--sidebar-hover) !important;
         }
         
-        /* Íconos de colores en modo oscuro */
         .tema-oscuro .card-primary .card-icon,
         .tema-oscuro .dashboard-card .card-primary .card-icon {
             background: #1e40af !important;
@@ -470,9 +466,48 @@ export function aplicarTemaYColor(tema, colorPrimario) {
             color: #f87171 !important;
         }
         
-        /* Bordes y detalles */
         .dashboard-card, .card, .ventas-container, .panel-productos, .panel-carrito {
             border: 1px solid var(--border-color);
+        }
+        
+        /* ===== NUEVAS REGLAS PARA COLOR PRIMARIO ===== */
+        .title-bar {
+            background: linear-gradient(135deg, var(--color-primario) 0%, color-mix(in srgb, var(--color-primario) 80%, black) 100%) !important;
+        }
+        .btn-primary, .btn-success {
+            background-color: var(--color-primario) !important;
+            border-color: var(--color-primario) !important;
+            color: white !important;
+        }
+        .btn-primary:hover, .btn-success:hover {
+            filter: brightness(0.9);
+        }
+        .btn-edit {
+            color: var(--color-primario) !important;
+        }
+        .btn-delete {
+            color: #dc2626 !important;
+        }
+        .window-controls button {
+            background: rgba(255, 255, 255, 0.1) !important;
+        }
+        .window-controls button:hover {
+            background: rgba(255, 255, 255, 0.2) !important;
+        }
+        .close-btn:hover {
+            background: #ef4444 !important;
+        }
+        .modal-actions .btn-primary {
+            background-color: var(--color-primario) !important;
+        }
+        
+        /* ===== CORRECCIÓN PARA EL BLOQUE DE PRECIO ESTIMADO ===== */
+        #preview-auto, .preview-price {
+            background-color: var(--input-bg) !important;
+            color: var(--text-color) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 8px;
+            padding: 10px;
         }
     `;
 }

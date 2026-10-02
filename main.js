@@ -166,6 +166,7 @@ function crearTablas() {
         subtotal REAL NOT NULL,
         tipo_ingreso TEXT,
         unidad TEXT,
+        tasa_bcv REAL DEFAULT 1.0,
         FOREIGN KEY (venta_id) REFERENCES ventas(id),
         FOREIGN KEY (producto_id) REFERENCES productos(id)
       )`);
@@ -242,7 +243,23 @@ function crearTablas() {
           });
         }
       });
-
+      // ==================================================
+      // MIGRACIÓN: agregar columna tasa_bcv a ventas si no existe
+      // ==================================================
+      db.all("PRAGMA table_info(ventas)", (err, columns) => {
+        if (!err && columns) {
+          const cols = columns.map(c => c.name);
+          if (!cols.includes('tasa_bcv')) {
+            db.run("ALTER TABLE ventas ADD COLUMN tasa_bcv REAL DEFAULT 1.0", (err) => {
+              if (!err) {
+                console.log("✅ Columna tasa_bcv agregada exitosamente a la tabla ventas");
+              } else {
+                console.error("❌ Error agregando tasa_bcv a ventas:", err);
+              }
+            });
+          }
+        }
+      });
       // ==================================================
       // BÚSQUEDA AVANZADA FTS5
       // ==================================================
